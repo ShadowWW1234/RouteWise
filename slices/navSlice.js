@@ -9,7 +9,7 @@ const initialState = {
     location: null,
     description: '',
   },
-  travelTimeInformation: null,
+  travelTimeInformation: null,  // Store travel time information, if needed
 };
 
 export const navSlice = createSlice({
@@ -17,21 +17,43 @@ export const navSlice = createSlice({
   initialState,
   reducers: {
     setOrigin: (state, action) => {
-      state.origin = action.payload; // Matches the structure: { location: ..., description: ... }
+      // Ensure both `location` and `description` are updated properly
+      state.origin = {
+        location: action.payload.location, 
+        description: action.payload.description
+      };
     },
     setDestination: (state, action) => {
-      state.destination = action.payload; // Matches the structure
+      // Similar structure for destination
+      state.destination = {
+        location: action.payload.location, 
+        description: action.payload.description
+      };
     },
     setTravelTimeInformation: (state, action) => {
+      // Update travel time information if available
       state.travelTimeInformation = action.payload;
+    },
+    clearOrigin: (state) => {
+      // Optional: Clear origin data
+      state.origin = { location: null, description: '' };
+    },
+    clearDestination: (state) => {
+      // Optional: Clear destination data
+      state.destination = { location: null, description: '' };
     },
   },
 });
 
-export const { setOrigin, setDestination, setTravelTimeInformation } =
-  navSlice.actions;
+export const {
+  setOrigin,
+  setDestination,
+  setTravelTimeInformation,
+  clearOrigin,
+  clearDestination,
+} = navSlice.actions;
 
-// Selectors
+// Selectors to retrieve origin, destination, and travel time info
 export const selectOrigin = (state) => state.nav.origin;
 export const selectDestination = (state) => state.nav.destination;
 export const selectTravelTimeInformation = (state) =>

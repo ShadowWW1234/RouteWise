@@ -1,16 +1,16 @@
-import { StyleSheet, View, PermissionsAndroid } from 'react-native';
-import React, { useEffect } from 'react';
+import { StyleSheet, View, PermissionsAndroid, Modal, Text, TouchableOpacity } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
 import MapboxGL from '@rnmapbox/maps';
 import Geolocation from '@react-native-community/geolocation';
 import { useDispatch, useSelector } from 'react-redux';
-import { setOrigin, selectOrigin } from '../slices/navSlice';
-
+import { setOrigin, selectOrigin,setDestination  } from '../slices/navSlice';
+ 
 MapboxGL.setAccessToken('pk.eyJ1Ijoic2hhZG93MjI2IiwiYSI6ImNtMTl6d3NnaDFrcWIyanM4M3pwMTYxeDQifQ.wDv2IuFGRpUASw1jx540Ng');
 
-const MapScreen = () => {
+const MapScreen = ({ destination }) => {
   const dispatch = useDispatch();
   const origin = useSelector(selectOrigin);
-
+ 
   const requestLocationPermission = async () => {
     try {
       const granted = await PermissionsAndroid.request(
@@ -54,6 +54,19 @@ const MapScreen = () => {
     requestLocationPermission();
   }, [dispatch]);
 
+  const mapRef = useRef(null);
+
+    useEffect(() => {
+        if (destination && mapRef.current) {
+            // Zoom to the selected destination when it changes
+            mapRef.current.setCamera({
+                centerCoordinate: [destination.longitude, destination.latitude],
+                zoomLevel: 14, // Adjust zoom level as needed
+                animationDuration: 2000, // Optional: animation duration in ms
+            });
+        }
+    }, [destination]);
+   
   return (
     <View style={styles.container}>
       <MapboxGL.MapView
@@ -63,12 +76,17 @@ const MapScreen = () => {
         rotateEnabled={true}
       >
         <MapboxGL.Camera
-          zoomLevel={15}
-          centerCoordinate={origin.location ? [origin.location.longitude, origin.location.latitude] : [120.89943929038361, 14.488862043596518]} // Fallback to static location
-          pitch={60}
-          animationMode={'flyTo'}
-          animationDuration={6000}
-        />
+  zoomLevel={18}
+  centerCoordinate={
+    origin.location 
+      ? [origin.location.longitude, origin.location.latitude]
+      : [120.89943929038361, 14.488862043596518]  // Fallback to static location
+  }
+  pitch={60}
+  animationMode={'flyTo'}
+  animationDuration={6000}
+/>
+
         
         <MapboxGL.UserLocation
            androidRenderMode="gps"
@@ -84,6 +102,8 @@ const MapScreen = () => {
         
      
       </MapboxGL.MapView>
+
+  
     </View>
   );
 };
@@ -91,11 +111,8 @@ const MapScreen = () => {
 export default MapScreen;
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  map: {
-    flex: 1,
-  },
+    container: { flex: 1 },
+    map: { flex: 1 },
+    
  
 });

@@ -62,7 +62,7 @@ const MapScreen = ({ destination }) => {
             mapRef.current.setCamera({
                 centerCoordinate: [destination.longitude, destination.latitude],
                 zoomLevel: 14, // Adjust zoom level as needed
-                animationDuration: 2000, // Optional: animation duration in ms
+                animationDuration: 1000, // Optional: animation duration in ms
             });
         }
     }, [destination]);
@@ -84,7 +84,7 @@ const MapScreen = ({ destination }) => {
   }
   pitch={60}
   animationMode={'flyTo'}
-  animationDuration={6000}
+  animationDuration={2000}
 />
 
         
@@ -92,12 +92,12 @@ const MapScreen = ({ destination }) => {
            androidRenderMode="gps"
            visible={true}
            showsUserHeadingIndicator={true} // Show heading indicator
-          onUpdate={(location) => {
-            dispatch(setOrigin({
-              location: { latitude: location.coords.latitude, longitude: location.coords.longitude },
-              description: 'Your current location',
-            }));
-          }}
+           onUpdate={(location) => {
+                dispatch(setOrigin({
+                location: { latitude: location.coords.latitude, longitude: location.coords.longitude },
+                description: 'Your current location',
+                }));
+            }}
         />
         
      

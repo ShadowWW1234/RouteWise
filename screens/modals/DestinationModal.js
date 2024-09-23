@@ -4,81 +4,91 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import MapboxGL from '@rnmapbox/maps';
 import { useDispatch } from 'react-redux';
 import { setOrigin } from '../../slices/navSlice';
-import polyline from '@mapbox/polyline';
 
 const DestinationModal = ({ visible, toggleModal, destination, toggleSearchModal }) => {
     const dispatch = useDispatch();
     const [origin, setOriginState] = useState(null);
-    const [lastOrigin, setLastOrigin] = useState(null);
-    const [route, setRoute] = useState(null);
+    const [routes, setRoutes] = useState([]);
+    const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
     const mapViewRef = useRef(null);
     const cameraRef = useRef(null);
+    const [currentRoute, setCurrentRoute] = useState(null);
 
-    const logOrigin = (newOrigin) => {
-        if (!lastOrigin || 
-            Math.abs(newOrigin.latitude - lastOrigin.latitude) > 0.0001 || 
-            Math.abs(newOrigin.longitude - lastOrigin.longitude) > 0.0001) {
-            console.log('Origin:', newOrigin);
-            setLastOrigin(newOrigin);
-        }
+    const resetState = () => {
+        setOriginState(null);
+        setRoutes([]);
+        setCurrentRoute(null);
+    };
+    
+    const handleCloseModal = () => {
+        resetState();
+        toggleModal();
     };
 
-    const fetchRoute = async () => {
+    const fetchRoutes = async () => {
         if (origin && destination) {
             try {
-                const response = await fetch(
-                    `https://api.mapbox.com/directions/v5/mapbox/driving/${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}?access_token=pk.eyJ1Ijoic2hhZG93MjI2IiwiYSI6ImNtMTl6d3NnaDFrcWIyanM4M3pwMTYxeDQifQ.wDv2IuFGRpUASw1jx540Ng`
+                // Fetching routes from Mapbox
+                const mapboxResponse = await fetch(
+                    `https://api.mapbox.com/directions/v5/mapbox/driving/${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}?alternatives=true&geometries=geojson&steps=true&overview=full&access_token=pk.eyJ1Ijoic2hhZG93MjI2IiwiYSI6ImNtMTl6d3NnaDFrcWIyanM4M3pwMTYxeDQifQ.wDv2IuFGRpUASw1jx540Ng`
                 );
-                const data = await response.json();
-                console.log('Directions API Response:', data);
-    
-                if (data.routes && data.routes.length > 0) {
-                    const geometry = data.routes[0].geometry;
-                    const coordinates = polyline.decode(geometry);
-                    const routeCoordinates = coordinates.map(coord => [coord[1], coord[0]]);
-                    setRoute(routeCoordinates); // Directly set the route without snapping
-                } else {
-                    console.error('No routes found', data);
-                }
+
+                const mapboxData = await mapboxResponse.json();
+                const mapboxRoutes = mapboxData.routes.map(route => route.geometry.coordinates);
+
+                // Fetching routes from OpenStreetMap (OSRM example)
+                const osrmResponse = await fetch(
+                    `http://router.project-osrm.org/route/v1/driving/${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}?alternatives=true&geometries=geojson&overview=full`
+                );
+                
+
+                const osrmData = await osrmResponse.json();
+                const osrmRoutes = osrmData.routes.map(route => route.geometry.coordinates);
+
+                // Combine routes
+                const allRoutes = [...mapboxRoutes, ...osrmRoutes];
+                setRoutes(allRoutes);
+                setCurrentRoute(allRoutes[0]); // Set the first route as default
             } catch (error) {
-                console.error('Error fetching route:', error);
+                console.error('Error fetching routes:', error);
             }
         }
     };
-    
-    
+
     const fitToMarkers = () => {
-        if (origin && destination) {
-            const sw = [Math.min(origin.longitude, destination.longitude), Math.min(origin.latitude, destination.latitude)];
-            const ne = [Math.max(origin.longitude, destination.longitude), Math.max(origin.latitude, destination.latitude)];
+        if (origin && destination && cameraRef.current) {
+            const bounds = {
+                ne: [Math.max(origin.longitude, destination.longitude), Math.max(origin.latitude, destination.latitude)],
+                sw: [Math.min(origin.longitude, destination.longitude), Math.min(origin.latitude, destination.latitude)],
+            };
     
-            cameraRef.current.setCamera({
-                bounds: {
-                    ne: ne,
-                    sw: sw,
-                },
-                padding: {
-                    top: 100,
-                    bottom: 40,
-                    left: 50,
-                    right: 40,
-                },
-                duration: 1000,
-            });
+            cameraRef.current.fitBounds(
+                bounds.ne,   // Northeast corner of the bounding box
+                bounds.sw,   // Southwest corner of the bounding box
+                100,         // Increased padding for more zoomed-out view
+                1000         // Animation duration in milliseconds
+            );
         }
     };
+    
 
     const handleGoNow = () => {
-        fetchRoute();
-        fitToMarkers(); // Fit the markers to the screen
+        fetchRoutes();
+        fitToMarkers();
     };
+
+    const handleSelectRoute = (index) => {
+        setSelectedRouteIndex(index);  // Update selected route
+        setCurrentRoute(routes[index]); // Update current route
+    };
+    
 
     return (
         <Modal
             animationType="slide"
             transparent={false}
             visible={visible}
-            onRequestClose={toggleModal}
+            onRequestClose={handleCloseModal}
         >
             <View style={styles.container}>
                 {destination && (
@@ -106,7 +116,6 @@ const DestinationModal = ({ visible, toggleModal, destination, toggleSearchModal
                                     description: 'Your current location',
                                 }));
                                 setOriginState(originData);
-                                logOrigin(originData);
                             }}
                         />
 
@@ -115,23 +124,39 @@ const DestinationModal = ({ visible, toggleModal, destination, toggleSearchModal
                             coordinate={[destination.longitude, destination.latitude]}
                         />
 
-                        {/* Route Line */}
-                        {route && (
-                            <MapboxGL.ShapeSource id="routeSource" shape={{ type: 'Feature', geometry: { type: 'LineString', coordinates: route } }}>
-                                <MapboxGL.LineLayer id="routeLayer" style={styles.routeLine} />
+                        {routes.map((routeGeometry, index) => (
+                            <MapboxGL.ShapeSource
+                                key={`route_${index}`}
+                                id={`routeSource_${index}`}
+                                shape={{
+                                    type: 'Feature',
+                                    geometry: {
+                                        type: 'LineString',
+                                        coordinates: routeGeometry,
+                                    },
+                                }}
+                                onPress={() => handleSelectRoute(index)}  // Trigger route selection on press
+                            >
+                                <MapboxGL.LineLayer
+                                    id={`routeLayer_${index}`}
+                                    style={{
+                                        lineWidth: 5,
+                                        lineJoin: 'round',
+                                        lineColor: index === selectedRouteIndex ? '#4287f5' : '#808080', // Blue for selected, gray for others
+                                        lineOpacity: index === selectedRouteIndex ? 1 : 0.4,             // Full opacity for selected, lower for others
+                                    }}
+                                />
                             </MapboxGL.ShapeSource>
-                        )}
+                        ))}
                     </MapboxGL.MapView>
                 )}
 
-                {/* Close Button */}
-                <TouchableOpacity onPress={toggleModal} style={styles.closeButton}>
+                <TouchableOpacity onPress={handleCloseModal} style={styles.closeButton}>
                     <View style={styles.circleButton}>
                         <Ionicons name="close" size={32} color="white" />
                     </View>
                 </TouchableOpacity>
 
-                {/* Back Button */}
                 <TouchableOpacity
                     onPress={() => {
                         toggleModal();
@@ -148,10 +173,10 @@ const DestinationModal = ({ visible, toggleModal, destination, toggleSearchModal
                     {destination && (
                         <>
                             <Text style={styles.title}>
-                                {destination.description.split(',')[0]} {/* City */}
+                                {destination.description.split(',')[0]}
                             </Text>
                             <Text style={styles.locationSubText}>
-                                {destination.description.split(',').slice(1).join(', ')} {/* Remaining description */}
+                                {destination.description.split(',').slice(1).join(', ')}
                             </Text>
                         </>
                     )}
@@ -160,15 +185,13 @@ const DestinationModal = ({ visible, toggleModal, destination, toggleSearchModal
                         style={styles.actionButton}
                         onPress={handleGoNow}
                     >
-                        <Text style={styles.actionButtonText}>Go Now</Text>
+                        <Text style={styles.actionButtonText}>View Routes</Text>
                     </TouchableOpacity>
                 </View>
             </View>
         </Modal>
     );
 };
-
-export default DestinationModal;
 
 const styles = StyleSheet.create({
     container: {
@@ -187,7 +210,7 @@ const styles = StyleSheet.create({
     backButton: {
         position: 'absolute',
         top: 20,
-        left: 20, // Positioning it on the left side
+        left: 20,
         zIndex: 1,
     },
     modalContent: {
@@ -211,9 +234,9 @@ const styles = StyleSheet.create({
         backgroundColor: '#2196F3',
         paddingVertical: 15,
         paddingHorizontal: 30,
-        borderRadius: 5,
+        borderRadius: 30,
         alignItems: 'center',
-        marginTop: 20,
+        marginTop: 15,
     },
     actionButtonText: {
         color: 'white',
@@ -221,18 +244,13 @@ const styles = StyleSheet.create({
         fontSize: 18,
     },
     circleButton: {
-        width: 50,           // Diameter of the circle
+        width: 50,
         height: 50,
-        borderRadius: 25,     // Half of the width/height to make it a circle
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',  // Black with 50% opacity
-        justifyContent: 'center',  // Center the icon inside the circle
+        borderRadius: 25,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        justifyContent: 'center',
         alignItems: 'center',
-    },  
-    routeLine: {
-        lineWidth: 10,
-        lineJoin: 'round',
-        lineColor: '#4287f5', // Change to a color that contrasts well with your map
-        lineOpacity: 0.8, // Adjust opacity to make it more visible
-    }
-    
+    },
 });
+
+export default DestinationModal;

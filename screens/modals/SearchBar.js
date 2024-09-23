@@ -58,16 +58,17 @@ const SearchBar = ({ modalVisible, toggleModal ,onPlaceSelect  }) => {
 
         {/* Search Input */}
         <View style={{ flex: 1 }}>
-          <TextInput
-            style={styles.textInput}
-            placeholder="Where to go?"
-            placeholderTextColor={'gray'}
-            value={searchText}
-            onChangeText={(text) => {
-              setSearchText(text);
-              fetchPlaces(text); // Fetch places from Mapbox
-            }}
-          />
+         <TextInput
+  style={styles.textInput}
+  placeholder="Where to go?"
+  placeholderTextColor={'gray'}
+  value={searchText}
+  onChangeText={(text) => {
+    setSearchText(text);
+    fetchPlaces(text); // Fetch places from Mapbox
+  }}
+/>
+
 
           {/* Display search results */}
           <FlatList

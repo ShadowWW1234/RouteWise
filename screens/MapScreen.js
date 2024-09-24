@@ -83,8 +83,7 @@ const MapScreen = ({ destination }) => {
       : [120.89943929038361, 14.488862043596518]  // Fallback to static location
   }
   pitch={60}
-  animationMode={'flyTo'}
-  animationDuration={2000}
+ 
 />
 
         

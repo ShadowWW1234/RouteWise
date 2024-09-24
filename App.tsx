@@ -1,6 +1,7 @@
 import { StyleSheet } from 'react-native';
 import SearchScreen from './screens/SearchScreen';
 import HomeScreen from './screens/HomeScreen';
+import RouteDetailsScreen from './screens/RouteDetailsScreen';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { store } from './store'; // Import your Redux store
@@ -21,11 +22,15 @@ const App = () => {
          options={{
           headerShown:false,
         }}/>
-      </Stack.Navigator>
-    </NavigationContainer>
-    </Provider>
-  );
-}
+
+      <Stack.Screen name="RouteDetails" component={RouteDetailsScreen} 
+          options={{ headerShown: false }} />
+
+            </Stack.Navigator>
+          </NavigationContainer>
+          </Provider>
+        );
+      }
 
 export default App;
 

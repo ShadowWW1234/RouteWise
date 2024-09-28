@@ -1,4 +1,4 @@
-import React, {  useState } from "react";
+import React, {  useState,useContext } from "react";
 import {
   View,
   Text,
@@ -13,7 +13,8 @@ import {
 import tw from "tailwind-react-native-classnames"; 
 import Ionicons from 'react-native-vector-icons/Ionicons'
 import AntDesign from 'react-native-vector-icons/AntDesign'
- 
+import { MapStyleContext } from "./context/MapStyleContext"; 
+
 const SideBar = () => {
     //toggle switches sidebar set to true all
   const [isAlternativeEnabled, setAlternativeEnabled] = useState(true);
@@ -23,12 +24,23 @@ const SideBar = () => {
   const [isTricycleEnabled, setTricycleEnabled] = useState(true);
   const [isCarsEnabled, setCarsEnabled] = useState(true);
 
-
+  
    // Animated value for sliding effect
    const sidebarAnim = useState(new Animated.Value(-250))[0]; // Sidebar starts off-screen
  
    const [isSidebarOpen, setIsSidebarOpen] = useState(false);
  
+   const { mapStyle, setMapStyle } = useContext(MapStyleContext); // Access map style and setter
+
+   // Toggle function for switching between street-map and satellite
+   const toggleMapStyle = () => {
+     setMapStyle(prevStyle =>
+       prevStyle === 'mapbox://styles/mapbox/streets-v11'
+         ? 'mapbox://styles/mapbox/satellite-streets-v12'
+         : 'mapbox://styles/mapbox/streets-v11'
+     );
+   };
+
 // Function to toggle sidebar visibility
 const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);
@@ -146,6 +158,28 @@ const toggleSidebar = () => {
                 />
               </View>
             </View>
+
+            {/* Divider */}
+            <View style={tw`border-t border-gray-300 my-4`} />
+
+
+            <View style={tw`mb-4`}>
+      <View style={tw`flex-row items-center justify-between`}>
+        {/* Map Icon */}
+         <Ionicons name="map" size={24} color="blue"/>
+
+        {/* Title */}
+        <Text style={tw`text-lg font-semibold flex-1 text-black`}>Satellite View</Text>
+
+        {/* Switch */}
+        <Switch
+          value={mapStyle === 'mapbox://styles/mapbox/satellite-streets-v12'}
+          onValueChange={toggleMapStyle}
+          trackColor={{ false: '#4169E1', true: '#4169E1' }} // Royal Blue for on state
+          thumbColor={mapStyle === 'mapbox://styles/mapbox/satellite-streets-v12' ? '#3654A2' : '#f4f3f4'}
+        />
+      </View>
+    </View>
 
             {/* Divider */}
             <View style={tw`border-t border-gray-300 my-4`} />

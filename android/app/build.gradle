@@ -121,4 +121,8 @@ project.ext.vectoricons = [
     iconFontNames: [ 'Ionicons.ttf', 'AntDesign.ttf' ] // Add other fonts here if needed
 ]
 
+project.ext.react = [
+    enableHermes: true  // Ensure this is set to true
+]
+
 apply from: "../../node_modules/react-native-vector-icons/fonts.gradle"

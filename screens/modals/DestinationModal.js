@@ -5,6 +5,7 @@ import MapboxGL from '@rnmapbox/maps';
 import { useDispatch } from 'react-redux'; 
 import { MapStyleContext } from '../context/MapStyleContext';
 import { useNavigation } from "@react-navigation/native";
+import {  MAPBOX_API_TOKEN } from '@env';
 
 const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch}) => {
     const dispatch = useDispatch();
@@ -34,7 +35,7 @@ const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch
     //     resetSearch();
     // };
  
-    
+
     const handleCloseModal = () => {
         resetState();  // Reset local state in DestinationModal
         if (typeof resetSearch === 'function') {
@@ -51,7 +52,7 @@ const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch
     
         try {
             const response = await fetch(
-                `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}?alternatives=true&annotations=closure%2Cmaxspeed%2Ccongestion_numeric%2Ccongestion%2Cspeed%2Cdistance%2Cduration&exclude=motorway%2Cferry%2Cunpaved%2Ccash_only_tolls&geometries=geojson&language=en&overview=full&roundabout_exits=true&steps=true&access_token=pk.eyJ1Ijoic2hhZG93MjI2IiwiYSI6ImNtMTl6d3NnaDFrcWIyanM4M3pwMTYxeDQifQ.wDv2IuFGRpUASw1jx540Ng`
+                `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}?alternatives=true&annotations=closure%2Cmaxspeed%2Ccongestion_numeric%2Ccongestion%2Cspeed%2Cdistance%2Cduration&exclude=ferry%2Cunpaved%2Ccash_only_tolls&geometries=geojson&language=en&overview=full&roundabout_exits=true&steps=true&access_token=${MAPBOX_API_TOKEN}`
             );
     
             const data = await response.json();
@@ -150,35 +151,29 @@ const formatDuration = (durationInSeconds) => {
         }
     };
      
-
     const startNavigation = () => {
-        console.log("Routes:", routes);
-        console.log("Selected Route Index:", selectedRouteIndex);
-        
         // Ensure valid index
         if (selectedRouteIndex < 0 || selectedRouteIndex >= routes.length) {
-            console.log("Invalid selectedRouteIndex:", selectedRouteIndex);
-            return; // Prevent navigation if index is invalid
+            return;
         }
         
         const selectedRoute = routes[selectedRouteIndex];
         if (!selectedRoute) {
-            console.log("No selected route available");
-            return; // Avoid navigation if no route is selected
+            return;
         }
-        
-        console.log("Selected Route:", selectedRoute);
     
+        // Extract the destination name
+        const destinationName = destination.description.split(',')[0];
+        console.log('Destination Name:', destinationName);
+
         // Pass necessary data for navigation
-        const congestionDistance = selectedRoute.congestionDistance || 0; // Default to 0 if undefined
-        const etaTime = selectedRoute.etaTime || 0; // Default to 0 if undefined
-    
         navigation.navigate('NavigationScreen', {
-            origin, 
-            destination, 
-            route: selectedRoute, // Pass the selected route
-            congestionDistance,   // Pass the congestion distance
-            etaTime               // Pass the ETA time
+            origin,
+            destination,
+            route: selectedRoute,
+            congestionDistance: selectedRoute.congestionDistance || 0,
+            etaTime: selectedRoute.etaTime || 0,
+            destinationName
         });
     };
     

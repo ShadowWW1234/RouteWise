@@ -5,8 +5,9 @@ import Geolocation from '@react-native-community/geolocation';
 import { useDispatch, useSelector } from 'react-redux';
 import { setOrigin, selectOrigin } from '../slices/navSlice';
 import { MapStyleContext } from "./context/MapStyleContext"; 
+import {  MAPBOX_API_TOKEN } from '@env';
 
-MapboxGL.setAccessToken('pk.eyJ1Ijoic2hhZG93MjI2IiwiYSI6ImNtMTl6d3NnaDFrcWIyanM4M3pwMTYxeDQifQ.wDv2IuFGRpUASw1jx540Ng');
+MapboxGL.setAccessToken(MAPBOX_API_TOKEN);
 
 const MapScreen = ({ destination }) => {
   const dispatch = useDispatch();
@@ -15,7 +16,7 @@ const MapScreen = ({ destination }) => {
   const { mapStyle } = useContext(MapStyleContext);
   const [mapError, setMapError] = useState(null);
 
- 
+
   const handleMapError = (error) => {
     if (error.message.includes('Source mapboxUserLocation is not in style')) {
       console.warn('User location source not found in style, ignoring error.');

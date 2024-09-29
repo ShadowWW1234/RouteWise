@@ -1,12 +1,16 @@
-import React, { useEffect, useState, useRef, useContext } from 'react';
+import React, { useEffect, useState, useRef, useContext, useMemo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, Button, BackHandler, FlatList, Animated } from 'react-native';
 import MapboxGL, { LineJoin } from '@rnmapbox/maps';
 import * as turf from '@turf/turf';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { MapStyleContext } from './context/MapStyleContext';
 import axios from 'axios';
+import BottomSheet from '@gorhom/bottom-sheet';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import RouteInfoCard from './RouteInfoCard';
+import {  MAPBOX_API_TOKEN } from '@env';
 
-MapboxGL.setAccessToken('pk.eyJ1Ijoic2hhZG93MjI2IiwiYSI6ImNtMTl6d3NnaDFrcWIyanM4M3pwMTYxeDQifQ.wDv2IuFGRpUASw1jx540Ng');
+MapboxGL.setAccessToken(MAPBOX_API_TOKEN);
 
 // Helper function to map instructions to Ionicons
 const getManeuverIcon = (instruction) => {
@@ -19,12 +23,11 @@ const getManeuverIcon = (instruction) => {
     }
     return "navigate-outline"; // Default icon
 };
-
+ 
 const NavigationScreen = ({ route, navigation }) => {
-    const { origin, destination } = route.params || {};
+    const { origin, destination,destinationName  } = route.params || {};
     const [currentPosition, setCurrentPosition] = useState(null);
-    const cameraRef = useRef(null);
-    const [traversedRoute, setTraversedRoute] = useState([]);
+     const [traversedRoute, setTraversedRoute] = useState([]);
     const [nonTraversedRoute, setNonTraversedRoute] = useState([]);
     const [isFollowing, setIsFollowing] = useState(true); // Track if the camera is following the user
     const [showModal, setShowModal] = useState(false);
@@ -36,12 +39,76 @@ const NavigationScreen = ({ route, navigation }) => {
     const [speed, setSpeed] = useState(0); // Speed state
     const [isDropdownOpen, setIsDropdownOpen] = useState(false); // Dropdown open/close state
     const dropdownHeight = useRef(new Animated.Value(0)).current; // Animation value for dropdown
-    const [prevHeading, setPrevHeading] = useState(null);
     const [followPitch, setFollowPitch] = useState(70); // Initial pitch
     const [currentStepIndex, setCurrentStepIndex] = useState(0); // Index of the current step
     const [distanceToNextManeuver, setDistanceToNextManeuver] = useState(0); // Distance to the next maneuver
-    
-    // Fetch driving directions from Mapbox API
+    const remainingInstructions = instructions.slice(currentStepIndex);
+
+const [fullRoute, setFullRoute] = useState([]); // Store the full route coordinates
+const [isRecalculating, setIsRecalculating] = useState(false); // Prevent multiple recalculations
+const [lastRecalculationTime, setLastRecalculationTime] = useState(0); // Debounce recalculations
+const [prevHeading, setPrevHeading] = useState(null);
+ 
+const snapPoints = useMemo(() => ['10%', '50%', '90%'], []);
+const bottomSheetRef = useRef(null);
+
+const [totalDistance, setTotalDistance] = useState(0); // in meters
+const [totalDuration, setTotalDuration] = useState(0); // in seconds
+const [remainingDistance, setRemainingDistance] = useState(0); // in meters
+const [remainingDuration, setRemainingDuration] = useState(0); // in seconds
+const [eta, setEta] = useState(null); // Estimated Time of Arrival
+const [currentRoadName, setCurrentRoadName] = useState('');
+
+
+const recalculateRoute = async (currentPosition) => {
+    try {
+        const originCoordinates = `${currentPosition[0]},${currentPosition[1]}`;
+        const destinationCoordinates = `${destination.longitude},${destination.latitude}`;
+
+        const response = await axios.get(
+            `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${originCoordinates};${destinationCoordinates}`,
+            {
+                params: {
+                    access_token: MAPBOX_API_TOKEN,
+                    steps: true,
+                    geometries: 'geojson',
+                    overview: 'full',
+                    annotations: 'congestion',
+                }
+            }
+        );
+
+        const routeData = response.data.routes[0];
+        setFullRoute(routeData.geometry.coordinates);
+        setInstructions(routeData.legs[0].steps); // Contains detailed steps
+        
+        // Set total distance and duration
+        setTotalDistance(routeData.distance); // in meters
+        setTotalDuration(routeData.duration); // in seconds
+       // Initially, remaining distance and duration are equal to total
+       setRemainingDistance(routeData.distance);
+       setRemainingDuration(routeData.duration);
+   
+
+        // Reset current step index
+        setCurrentStepIndex(0);
+
+        // Set the first instruction
+        if (routeData.legs[0].steps.length > 0) {
+            const firstStep = routeData.legs[0].steps[0];
+            setCurrentInstruction(`${firstStep.maneuver.instruction} onto ${firstStep.name}`);
+        }
+
+        // Reset isRecalculating after successful recalculation
+        setIsRecalculating(false);
+    } catch (error) {
+        console.error('Error recalculating directions:', error);
+        // Reset isRecalculating even if there is an error to allow future recalculations
+        setIsRecalculating(false);
+    }
+};
+
+
      // Fetch driving directions from Mapbox API (same as before)
      const fetchDirections = async () => {
         const originCoordinates = `${origin.longitude},${origin.latitude}`;
@@ -52,7 +119,7 @@ const NavigationScreen = ({ route, navigation }) => {
                 `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${originCoordinates};${destinationCoordinates}`,
                 {
                     params: {
-                        access_token: 'pk.eyJ1Ijoic2hhZG93MjI2IiwiYSI6ImNtMTl6d3NnaDFrcWIyanM4M3pwMTYxeDQifQ.wDv2IuFGRpUASw1jx540Ng',
+                        access_token: MAPBOX_API_TOKEN,
                         steps: true,
                         geometries: 'geojson',
                         overview: 'full',
@@ -64,8 +131,9 @@ const NavigationScreen = ({ route, navigation }) => {
             const routeData = response.data.routes[0];
             setTraversedRoute(routeData.geometry.coordinates);
             setNonTraversedRoute(routeData.geometry.coordinates);
+            setFullRoute(routeData.geometry.coordinates); // Set the full route
             setInstructions(routeData.legs[0].steps); // Contains detailed steps
-
+        
             // Set the first instruction to be displayed
             // Set the first instruction to be displayed
 if (routeData.legs[0].steps.length > 0) {
@@ -87,13 +155,33 @@ if (routeData.legs[0].steps.length > 0) {
             return true;
         };
 
-
-    
         const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
 
         return () => backHandler.remove();
     }, [origin, destination]);
 
+
+    const formatDuration = (durationInSeconds) => {
+        const hours = Math.floor(durationInSeconds / 3600);
+        const minutes = Math.ceil((durationInSeconds % 3600) / 60);
+    
+        if (hours > 0) {
+            return `${hours} hr ${minutes} min`;
+        } else {
+            return `${minutes} min`;
+        }
+    };
+    
+    const formatTime = (date) => {
+        if (!date) return '';
+        const hours = date.getHours();
+        const minutes = date.getMinutes();
+        const ampm = hours >= 12 ? 'PM' : 'AM';
+        const hours12 = hours % 12 || 12;
+        const minutesStr = minutes < 10 ? '0' + minutes : minutes;
+        return `${hours12}:${minutesStr} ${ampm}`;
+    };
+    
 
   
     const toggleDropdown = () => {
@@ -106,11 +194,12 @@ if (routeData.legs[0].steps.length > 0) {
         setIsDropdownOpen(!isDropdownOpen);
     };
 
- // Recenter map and resume following
- const recenterMap = () => {
-    setIsFollowing(true);
-    setShowRecenter(false);
-};
+    // Recenter map and resume following
+    const recenterMap = () => {
+        setIsFollowing(true);
+        setShowRecenter(false);
+    };
+
     // Detect user panning
     const handleRegionIsChanging = (event) => {
         if (event.properties && event.properties.isUserInteraction) {
@@ -123,9 +212,12 @@ if (routeData.legs[0].steps.length > 0) {
     const handlePanDrag = (event) => {
         if (isFollowing) {
             setIsFollowing(false);
+        }
+        if (!showRecenter) {
             setShowRecenter(true);
         }
     };
+    
     
 
     // Handle exit navigation and reset all values
@@ -140,7 +232,11 @@ if (routeData.legs[0].steps.length > 0) {
     };
 
     return (
+
+
         <View style={styles.container}>
+               <GestureHandlerRootView style={{ flex: 1 }}>
+ 
      <MapboxGL.MapView 
                 style={styles.map} 
                 styleURL={mapStyle}
@@ -153,35 +249,74 @@ if (routeData.legs[0].steps.length > 0) {
                     followPitch={followPitch}
                     onPanDrag={handlePanDrag}
                 />
-{traversedRoute.length > 0 && (
+   
+   
+   {fullRoute.length > 0 && (
                     <MapboxGL.ShapeSource
-                        id="traversedRouteSource"
+                        id="routeSource"
                         shape={{
                             type: 'Feature',
-                            geometry: { type: 'LineString', coordinates: traversedRoute },
+                            geometry: { type: 'LineString', coordinates: fullRoute },
                         }}
                     >
                         <MapboxGL.LineLayer
-                            id="traversedRouteLayer"
+                            id="routeLayer"
                             style={{ lineColor: 'blue', lineWidth: 10, lineOpacity: 0.5, lineCap: 'round', lineJoin: 'round' }}
                         />
                     </MapboxGL.ShapeSource>
                 )}
+
+
+
+
              <MapboxGL.UserLocation
-    visible={true}
-    showsUserHeadingIndicator={true}
-    onUpdate={(location) => {
-        const { longitude, latitude, heading, speed } = location.coords;
-        const newPosition = [longitude, latitude];
+      visible={true}
+      showsUserHeadingIndicator={true}
+      onUpdate={(location) => {
+          const { longitude, latitude, heading, speed } = location.coords;
+          const newPosition = [longitude, latitude];
+  
+          setCurrentPosition(newPosition);
+          setSpeed(speed || 0);
+    // Adjust pitch when turning
+    if (prevHeading !== null && heading !== null) {
+        let headingChange = Math.abs(heading - prevHeading);
+        if (headingChange > 180) {
+            headingChange = 360 - headingChange; // Adjust for wrap-around
+        }
+        if (headingChange > 15) {
+            // User is turning
+            setFollowPitch(75); // Increase tilt when turning
+        } else {
+            // User is not turning
+            setFollowPitch(70); // Normal tilt
+        }
+    }
+  // Proceed only if we have steps
+  if (instructions.length > 0 && currentStepIndex < instructions.length) {
+    const currentStep = instructions[currentStepIndex];
+  // Update the current road name
+  setCurrentRoadName(currentStep.name || 'Unknown Road');
+}
 
-        setCurrentPosition(newPosition);
-        setSpeed(speed || 0);
+// Check if user is off-route
+if (fullRoute.length > 0) {
+    // Existing code for off-route detection...
+}
 
-        // Adjust pitch when turning (existing code)
-        // ...
+// Show recenter button when speed is zero and not already following
+if ((speed === 0 || speed === null) && !isFollowing && !showRecenter) {
+    setShowRecenter(true);
+}
 
-        // Proceed only if we have steps
-        if (instructions.length > 0 && currentStepIndex < instructions.length) {
+// Hide recenter button when following
+if (isFollowing && showRecenter) {
+    setShowRecenter(false);
+}
+
+    setPrevHeading(heading);
+ 
+        if (instructions.length > 0 && currentStepIndex < instructions.length){
             const currentStep = instructions[currentStepIndex];
             const maneuverPoint = currentStep.maneuver.location; // [longitude, latitude]
 
@@ -193,9 +328,9 @@ if (routeData.legs[0].steps.length > 0) {
             const distance = turf.distance(from, to, options);
             setDistanceToNextManeuver(distance);
 
-            // Update the current instruction with the remaining distance
+             // Update the current instruction with the remaining distance
             setCurrentInstruction(
-                `${currentStep.maneuver.instruction} onto ${currentStep.name} in ${Math.round(distance)} meters`
+                `${currentStep.maneuver.instruction} onto ${currentStep.name}`
             );
 
             // Check if we should advance to the next step
@@ -211,7 +346,40 @@ if (routeData.legs[0].steps.length > 0) {
             }
             
         }
-    }}
+
+
+              // Check if user is off-route
+              if (fullRoute.length > 0) {
+                const userPoint = turf.point(newPosition);
+                const routeLine = turf.lineString(fullRoute);
+    
+                const snapped = turf.nearestPointOnLine(routeLine, userPoint);
+                const distanceFromRoute = turf.distance(userPoint, snapped, { units: 'meters' });
+    
+                const currentTime = Date.now();
+    
+                if (distanceFromRoute > 30 && !isRecalculating && (currentTime - lastRecalculationTime > 10000)) {
+                    // User is off-route
+                    setIsRecalculating(true);
+                    setLastRecalculationTime(currentTime);
+                    recalculateRoute(newPosition);
+                }
+            }
+
+// Calculate remaining distance and duration
+const remainingSteps = instructions.slice(currentStepIndex);
+const distanceLeft = remainingSteps.reduce((sum, step) => sum + step.distance, 0);
+const durationLeft = remainingSteps.reduce((sum, step) => sum + step.duration, 0);
+setRemainingDistance(distanceLeft);
+setRemainingDuration(durationLeft);
+
+// Calculate ETA
+const currentTime = new Date();
+const etaTime = new Date(currentTime.getTime() + durationLeft * 1000);
+setEta(etaTime);
+
+        }}
+ 
     locationPuck={{
         type: 'circle',
         circleColor: 'blue',
@@ -256,7 +424,7 @@ if (routeData.legs[0].steps.length > 0) {
 </Animated.View>
 
 
-            {showRecenter && (
+{showRecenter && (
                 <TouchableOpacity style={styles.recenterButton} onPress={recenterMap}>
                     <Ionicons name="locate" size={30} color="black" />
                 </TouchableOpacity>
@@ -266,6 +434,8 @@ if (routeData.legs[0].steps.length > 0) {
             <View style={styles.speedometer}>
                 <Text style={styles.speedText}>{speed > 0 ? `${Math.round(speed * 3.6)} km/h` : '0 km/h'}</Text>
             </View>
+
+
 
             {/* Modal for exit confirmation */}
             <Modal
@@ -302,6 +472,37 @@ if (routeData.legs[0].steps.length > 0) {
                     </View>
                 </View>
             </Modal>
+
+         
+  <BottomSheet
+    ref={bottomSheetRef}
+    index={0} // Initial snap point index
+    snapPoints={snapPoints}
+    enablePanDownToClose={false} // Prevent closing the sheet by dragging down
+    handleIndicatorStyle={{ backgroundColor: 'gray' }}
+  >
+    {/* Content of the bottom sheet */}
+    <View style={styles.bottomSheetContent}>
+    <Text style={styles.summaryTitle}>{ formatTime(eta) }</Text>
+         
+    <Text style={styles.summaryText}>
+      { (remainingDistance / 1000).toFixed(1) } km  |  { formatDuration(remainingDuration) }
+    </Text>
+
+
+    <RouteInfoCard
+  destinationName={destinationName}
+  viaRoad={currentRoadName} // Replace with the actual road name variable
+  onAddStop={() => {
+    // Handle the add stop action
+    console.log('Add Stop pressed');
+  }}
+/>
+  </View>
+
+  </BottomSheet>
+</GestureHandlerRootView>
+
         </View>
     );
 };
@@ -336,12 +537,13 @@ const styles = StyleSheet.create({
     },
     recenterButton: {
         position: 'absolute',
-        bottom: 20,
+        bottom: 50,
         right: 20,
-        backgroundColor: 'white',
+        backgroundColor: 'black',
         borderRadius: 25,
         padding: 10,
         elevation: 5,
+    
     },
     turnList: {
         position: 'absolute',
@@ -399,7 +601,7 @@ const styles = StyleSheet.create({
     },
     speedometer: {
         position: 'absolute',
-        bottom: 20,
+        bottom: 90,
         left: 10,
         backgroundColor: 'white',
         borderRadius: 5,
@@ -410,7 +612,37 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: 'bold',
         color: 'black',
-    },
+    }, bottomSheetContent: {
+        flex: 1,
+        alignItems: 'center',
+        marginTop:-5,
+
+      },
+      bottomSheetText: {
+        fontSize: 18,
+        color: 'black',
+      },summaryContainer: {
+        padding: 20,
+        alignItems: 'center',
+      },
+      summaryTitle: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        color: 'black',
+   
+      },
+      summaryText: {
+        fontSize: 20,
+        color: 'gray',
+      },cardinfocontainer:{
+        backgroundColor:'gray',
+        height:200,
+        width:'90%',
+        borderRadius:10,
+        top: 20,
+        alignItems:'center'
+      }
+      
 });
 
 export default NavigationScreen;

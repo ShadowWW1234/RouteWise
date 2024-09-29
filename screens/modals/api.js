@@ -1,10 +1,9 @@
-// Remove the import statement for node-fetch
+import {  MAPBOX_API_TOKEN } from '@env';
 
-const MAPBOX_ACCESS_TOKEN = 'pk.eyJ1Ijoic2hhZG93MjI2IiwiYSI6ImNtMTl6d3NnaDFrcWIyanM4M3pwMTYxeDQifQ.wDv2IuFGRpUASw1jx540Ng';
-
+ 
 export const fetchLocationName = async (coordinates) => {
   const [longitude, latitude] = coordinates;
-  const url = `https://api.mapbox.com/search/geocode/v6/reverse?longitude=${longitude}&latitude=${latitude}&access_token=${MAPBOX_ACCESS_TOKEN}`;
+  const url = `https://api.mapbox.com/search/geocode/v6/reverse?longitude=${longitude}&latitude=${latitude}&access_token=${MAPBOX_API_TOKEN}`;
 
   try {
     const response = await fetch(url); // Use the built-in fetch

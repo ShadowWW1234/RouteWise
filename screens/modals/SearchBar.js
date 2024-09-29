@@ -6,9 +6,9 @@ import { useDispatch, useSelector } from 'react-redux';
 import { setOrigin, setDestination } from '../../slices/navSlice';
 import MapSelectionModal from './MapSelectionModal';
 import DestinationModal from './DestinationModal';
+import {  MAPBOX_API_TOKEN } from '@env';
 
-const MAPBOX_ACCESS_TOKEN = 'pk.eyJ1Ijoic2hhZG93MjI2IiwiYSI6ImNtMTl6d3NnaDFrcWIyanM4M3pwMTYxeDQifQ.wDv2IuFGRpUASw1jx540Ng';  // Add your Mapbox token here
-
+ 
 const SearchBar = ({ modalVisible, toggleModal }) => {
   const [originText, setOriginText] = useState('Select manual location'); // Default text for origin
   const [searchText, setSearchText] = useState(''); // For destination search input
@@ -38,7 +38,7 @@ const handlereset=()=>{
     if (text.length > 2) {
       try {
         const response = await fetch(
-          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(text)}.json?access_token=${MAPBOX_ACCESS_TOKEN}&autocomplete=true&country=PH`
+          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(text)}.json?access_token=${MAPBOX_API_TOKEN}&autocomplete=true&country=PH`
         );
         const data = await response.json();
         setSearchResults(data.features); // Store search results
@@ -72,7 +72,7 @@ const handleSelectLocation = async (coordinates) => {
 
   try {
     const reverseGeocode = await fetch(
-      `https://api.mapbox.com/geocoding/v5/mapbox.places/${longitude},${latitude}.json?access_token=${MAPBOX_ACCESS_TOKEN}`
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/${longitude},${latitude}.json?access_token=${MAPBOX_API_TOKEN}`
     );
     const data = await reverseGeocode.json();
 

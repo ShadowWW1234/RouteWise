@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View, SafeAreaView, TouchableOpacity, TextInput, Modal } from 'react-native';
-import React, { useState,useContext } from 'react';
+import React, { useState, useEffect } from 'react';
 import tw from "tailwind-react-native-classnames";  
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import VehicleTypeSelection from './modals/VehicleTypeSelection';
@@ -7,44 +7,79 @@ import SearchBar from '../screens/modals/SearchBar';
 import MapScreen from '../screens/MapScreen';
 import SideBar from '../screens/SideBar';
 import DestinationModal from '../screens/modals/DestinationModal';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const SearchScreen = () => {
     const [modalVisible, setModalVisible] = useState(false);
     const [isSearchModalVisible, setSearchModalVisible] = useState(false);
     const [isDestinationModalVisible, setDestinationModalVisible] = useState(false);
     const [selectedDestination, setSelectedDestination] = useState(null);
-    const [selectedOrigin, setSelectingOrigin] = useState(null); // Track whether searching for origin or destination
- 
+    const [selectedOrigin, setSelectingOrigin] = useState(null);
 
+    // Function to toggle the DestinationModal
     const toggleDestinationModal = () => setDestinationModalVisible(!isDestinationModalVisible);
-     
-    const handlePlaceSelect = (origin,destination) => {
+    
+     // Define resetSearch function
+     const resetSearch = () => {
+        setSearchModalVisible(false); // Close the search modal
+        console.log("resetSearch function is called"); // Debugging log
+    };
+    
+
+    // Save the modal state when it's updated
+    useEffect(() => {
+        const saveModalState = async () => {
+            try {
+                await AsyncStorage.setItem('MODAL_STATE', JSON.stringify(isDestinationModalVisible));
+            } catch (e) {
+                console.error('Failed to save modal state.', e);
+            }
+        };
+        saveModalState();
+    }, [isDestinationModalVisible]);
+
+    // Load the modal state when the component mounts
+    useEffect(() => {
+        const loadModalState = async () => {
+            try {
+                const savedState = await AsyncStorage.getItem('MODAL_STATE');
+                if (savedState !== null) {
+                    setDestinationModalVisible(JSON.parse(savedState));
+                }
+            } catch (e) {
+                console.error('Failed to load modal state.', e);
+            }
+        };
+        loadModalState();
+    }, []);
+
+    // Handle place selection from the SearchBar
+    const handlePlaceSelect = (origin, destination) => {
         setSelectingOrigin(origin);
         setSelectedDestination(destination);
-        
         setSearchModalVisible(false);
         setDestinationModalVisible(true);
         console.log(destination);
     };
 
-    
-
+    // Function to toggle the search modal
     const toggleSearchModal = () => {
         setSearchModalVisible(!isSearchModalVisible);
     };
 
+    // Function to toggle the vehicle selection modal
     const toggleModal = () => {
         setModalVisible(!modalVisible);
     };
- 
 
     return (
         <SafeAreaView style={tw`flex-1 bg-white`}>
             <View style={tw`flex-row flex-1`}>
-                <SideBar/>
-                <MapScreen destination={selectedDestination}/>
+                <SideBar />
+                <MapScreen destination={selectedDestination} />
             </View>
-    
+
+            {/* Vehicle Type Selection Button */}
             <View style={styles.overlayContainer}>
                 <TouchableOpacity style={styles.button} onPress={toggleModal}>
                     <View style={styles.buttonContent}>
@@ -55,12 +90,14 @@ const SearchScreen = () => {
                 <VehicleTypeSelection modalVisible={modalVisible} toggleModal={toggleModal} />
             </View>
 
+            {/* SearchBar Modal */}
             <SearchBar 
                 modalVisible={isSearchModalVisible} 
                 toggleModal={toggleSearchModal}  
                 onPlaceSelect={handlePlaceSelect} 
             />
-   
+
+            {/* Search Bar Input */}
             <View style={styles.searchBarContainer}>
                 <Ionicons name="search" size={24} color="black" style={styles.searchIcon} />
                 <TouchableOpacity onPress={toggleSearchModal} style={{ flex: 1 }}>
@@ -76,13 +113,13 @@ const SearchScreen = () => {
                 </TouchableOpacity>
             </View>
 
-            <DestinationModal
+            {/* DestinationModal */}
+            <DestinationModal 
                 visible={isDestinationModalVisible}
                 toggleModal={toggleDestinationModal}
                 destination={selectedDestination}
                 origin={selectedOrigin}
-                toggleSearchModal={toggleSearchModal} 
-              
+                resetSearch={resetSearch}  // Pass resetSearch
             />
         </SafeAreaView>
     );

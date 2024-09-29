@@ -6,7 +6,7 @@ import { useDispatch } from 'react-redux';
 import { MapStyleContext } from '../context/MapStyleContext';
 import { useNavigation } from "@react-navigation/native";
 
-const DestinationModal = ({ visible, toggleModal, destination,origin  }) => {
+const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch}) => {
     const dispatch = useDispatch();
     const [routes, setRoutes] = useState([]);
     const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
@@ -25,17 +25,25 @@ const DestinationModal = ({ visible, toggleModal, destination,origin  }) => {
        
         setRoutes([]);
         setSelectedRouteIndex(0);
-        setSearchInput('');
+
     };
 
-    const handleCloseModal = () => {
-        resetState();
-        toggleModal();
-        
-    };
+    // const handleCloseModal = () => {
+    //     resetState();
+    //     toggleModal();
+    //     resetSearch();
+    // };
  
     
-    
+    const handleCloseModal = () => {
+        resetState();  // Reset local state in DestinationModal
+        if (typeof resetSearch === 'function') {
+            resetSearch();  // Call resetSearch passed from parent
+        } else {
+            console.error('resetSearch is not a function!');  // Error check
+        }
+        toggleModal();  // Close the modal
+    };
     const fetchRoutes = async () => {
         if (!origin || !destination) return;
     
@@ -247,7 +255,6 @@ useEffect(() => {
     }
 }, [routes, selectedRouteIndex]);
 
-// Function to handle "View Routes" and "Go Now"
 const handleGoNow = () => {
     if (!loadingRoutes && !isRouteFetched) {
         // If routes haven't been fetched yet, fetch them
@@ -257,8 +264,10 @@ const handleGoNow = () => {
     } else if (isRouteFetched) {
         // If routes are already fetched, trigger navigation
         startNavigation(); // Start turn-by-turn navigation
+        toggleModal(); // Close the DestinationModal
     }
 };
+
 
 
     const getCongestionColor = (congestionValue) => {

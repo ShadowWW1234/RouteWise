@@ -22,11 +22,16 @@ const SearchBar = ({ modalVisible, toggleModal }) => {
   const dispatch = useDispatch();
 
 
-  
+   // Function to reset the search text in the SearchBar
+  const resetSearch = () => {
+    setSearchText(''); // Reset the search input
+    setSearchResults([]); // Clear search results
+  };
+
 const handlereset=()=>{
   toggleModal();
   setSearchText('');
-  setSearchResults('');
+  setSearchResults([]);
 }
   // Function to fetch places for destination search
   const fetchPlaces = debounce(async (text) => {

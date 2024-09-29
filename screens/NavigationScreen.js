@@ -1,35 +1,55 @@
 import React, { useEffect, useState, useRef, useContext } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, Button } from 'react-native';
-import MapboxGL from '@rnmapbox/maps';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, Button, BackHandler, FlatList, Animated } from 'react-native';
+import MapboxGL, { LineJoin } from '@rnmapbox/maps';
 import * as turf from '@turf/turf';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { MapStyleContext } from './context/MapStyleContext';
 import axios from 'axios';
 
-MapboxGL.setAccessToken('pk.eyJ1Ijoic2hhZG93MjI2IiwiYSI6ImNtMTl6d3NnaDFrcWIyanM4M3pwMTYxeDQifQ.wDv2IuFGRpUASw1jx540Ng'); // Add your Mapbox access token
+MapboxGL.setAccessToken('pk.eyJ1Ijoic2hhZG93MjI2IiwiYSI6ImNtMTl6d3NnaDFrcWIyanM4M3pwMTYxeDQifQ.wDv2IuFGRpUASw1jx540Ng');
 
-const NavigationScreen = ({ route }) => {
+// Helper function to map instructions to Ionicons
+const getManeuverIcon = (instruction) => {
+    if (instruction.toLowerCase().includes('right')) {
+        return "arrow-forward-outline";
+    } else if (instruction.toLowerCase().includes('left')) {
+        return "arrow-back-outline";
+    } else if (instruction.toLowerCase().includes('straight')) {
+        return "arrow-up-outline";
+    }
+    return "navigate-outline"; // Default icon
+};
+
+const NavigationScreen = ({ route, navigation }) => {
     const { origin, destination } = route.params || {};
     const [currentPosition, setCurrentPosition] = useState(null);
     const cameraRef = useRef(null);
     const [traversedRoute, setTraversedRoute] = useState([]);
     const [nonTraversedRoute, setNonTraversedRoute] = useState([]);
-    const [isPanning, setIsPanning] = useState(false);
+    const [isFollowing, setIsFollowing] = useState(true); // Track if the camera is following the user
     const [showModal, setShowModal] = useState(false);
+    const [showExitModal, setShowExitModal] = useState(false); // Exit navigation modal
     const { mapStyle } = useContext(MapStyleContext);
     const [instructions, setInstructions] = useState([]);
     const [currentInstruction, setCurrentInstruction] = useState('');
-    const [showRecenter, setShowRecenter] = useState(false);
-    const [congestionDetails, setCongestionDetails] = useState('');
-
-    // Fetch directions from Mapbox API
-    const fetchDirections = async () => {
+    const [showRecenter, setShowRecenter] = useState(false); // Show recenter button when not following
+    const [speed, setSpeed] = useState(0); // Speed state
+    const [isDropdownOpen, setIsDropdownOpen] = useState(false); // Dropdown open/close state
+    const dropdownHeight = useRef(new Animated.Value(0)).current; // Animation value for dropdown
+    const [prevHeading, setPrevHeading] = useState(null);
+    const [followPitch, setFollowPitch] = useState(70); // Initial pitch
+    const [currentStepIndex, setCurrentStepIndex] = useState(0); // Index of the current step
+    const [distanceToNextManeuver, setDistanceToNextManeuver] = useState(0); // Distance to the next maneuver
+    
+    // Fetch driving directions from Mapbox API
+     // Fetch driving directions from Mapbox API (same as before)
+     const fetchDirections = async () => {
         const originCoordinates = `${origin.longitude},${origin.latitude}`;
         const destinationCoordinates = `${destination.longitude},${destination.latitude}`;
 
         try {
             const response = await axios.get(
-                `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${originCoordinates};${destinationCoordinates}`, 
+                `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${originCoordinates};${destinationCoordinates}`,
                 {
                     params: {
                         access_token: 'pk.eyJ1Ijoic2hhZG93MjI2IiwiYSI6ImNtMTl6d3NnaDFrcWIyanM4M3pwMTYxeDQifQ.wDv2IuFGRpUASw1jx540Ng',
@@ -44,145 +64,226 @@ const NavigationScreen = ({ route }) => {
             const routeData = response.data.routes[0];
             setTraversedRoute(routeData.geometry.coordinates);
             setNonTraversedRoute(routeData.geometry.coordinates);
-            setInstructions(routeData.legs[0].steps);
+            setInstructions(routeData.legs[0].steps); // Contains detailed steps
 
-            // Set congestion details
-            if (routeData.legs[0].annotation) {
-                setCongestionDetails(routeData.legs[0].annotation.congestion.join(', '));
-            }
+            // Set the first instruction to be displayed
+            // Set the first instruction to be displayed
+if (routeData.legs[0].steps.length > 0) {
+    const firstStep = routeData.legs[0].steps[0];
+    setCurrentInstruction(`${firstStep.maneuver.instruction} onto ${firstStep.name}`);
+}
+
         } catch (error) {
             console.error('Error fetching directions:', error);
         }
     };
 
+    
     useEffect(() => {
-        fetchDirections(); // Fetch directions on component mount
+        fetchDirections();
+
+        const backAction = () => {
+            setShowExitModal(true);
+            return true;
+        };
+
+
+    
+        const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+
+        return () => backHandler.remove();
     }, [origin, destination]);
 
-    const updateRoute = (position, heading) => {
-        if (!position || traversedRoute.length >= nonTraversedRoute.length) return;
 
-        const newTraversedRoute = turf.lineSlice(
-            turf.point(nonTraversedRoute[0]),
-            turf.point(position),
-            turf.lineString(nonTraversedRoute)
-        ).geometry.coordinates;
-
-        setTraversedRoute(newTraversedRoute);
-        const remainingRoute = nonTraversedRoute.slice(newTraversedRoute.length);
-        setNonTraversedRoute(remainingRoute);
-
-        let nextInstruction = '';
-
-        for (let i = 0; i < instructions.length; i++) {
-            const step = instructions[i];
-            const nextStepCoord = step.maneuver.location;
-            const distanceToNextStep = turf.distance(turf.point(position), turf.point(nextStepCoord)) * 1000;
-
-            if (distanceToNextStep > 1) {
-                nextInstruction = step.maneuver.instruction;
-                setCurrentInstruction(`${nextInstruction} in ${Math.round(distanceToNextStep)} meters`);
-                break;
-            } else {
-                setInstructions(instructions.slice(i + 1));
-            }
-        }
-
-        if (nextInstruction) {
-            const bearing = instructions[0]?.maneuver?.bearing_after || 0;
-
-            cameraRef.current.setCamera({
-                centerCoordinate: position,
-                zoomLevel: 18,
-                pitch: 45,
-                bearing: heading, // Update bearing with heading
-                animationDuration: 500,
-            });
-        }
-
-        const destinationPoint = turf.point(nonTraversedRoute[nonTraversedRoute.length - 1]);
-        const distanceToDestination = turf.distance(turf.point(position), destinationPoint) * 1000;
-
-        if (distanceToDestination <= 1) {
-            setShowModal(true);
-        }
+  
+    const toggleDropdown = () => {
+        const targetHeight = isDropdownOpen ? 0 : 200;
+        Animated.timing(dropdownHeight, {
+            toValue: targetHeight,
+            duration: 300,
+            useNativeDriver: false,
+        }).start();
+        setIsDropdownOpen(!isDropdownOpen);
     };
 
-    const recenterMap = () => {
-        if (cameraRef.current && currentPosition) {
-            cameraRef.current.setCamera({
-                centerCoordinate: currentPosition,
-                zoomLevel: 18,
-                pitch: 45,
-                animationDuration: 500,
-            });
-            setIsPanning(false);
-            setShowRecenter(false);
+ // Recenter map and resume following
+ const recenterMap = () => {
+    setIsFollowing(true);
+    setShowRecenter(false);
+};
+    // Detect user panning
+    const handleRegionIsChanging = (event) => {
+        if (event.properties && event.properties.isUserInteraction) {
+            if (isFollowing) {
+                setIsFollowing(false);
+                setShowRecenter(true);
+            }
         }
+    };
+    const handlePanDrag = (event) => {
+        if (isFollowing) {
+            setIsFollowing(false);
+            setShowRecenter(true);
+        }
+    };
+    
+
+    // Handle exit navigation and reset all values
+    const handleExitNavigation = () => {
+        setInstructions([]);
+        setTraversedRoute([]);
+        setNonTraversedRoute([]);
+        setCurrentInstruction('');
+        setSpeed(0);
+
+        navigation.navigate('SearchScreen');
     };
 
     return (
         <View style={styles.container}>
-            <MapboxGL.MapView
-                style={styles.map}
+     <MapboxGL.MapView 
+                style={styles.map} 
                 styleURL={mapStyle}
-                onMapIdle={() => setIsPanning(false)} // Detect when the user stops panning
+                onCameraChanged ={handleRegionIsChanging}
             >
-                <MapboxGL.Camera ref={cameraRef} />
-
-                {/* Render traversed part of the route */}
-                {traversedRoute.length > 0 && (
+               <MapboxGL.Camera
+                    followUserLocation={isFollowing}
+                    followUserMode="compass"
+                    followZoomLevel={18}
+                    followPitch={followPitch}
+                    onPanDrag={handlePanDrag}
+                />
+{traversedRoute.length > 0 && (
                     <MapboxGL.ShapeSource
                         id="traversedRouteSource"
                         shape={{
                             type: 'Feature',
-                            geometry: {
-                                type: 'LineString',
-                                coordinates: traversedRoute,
-                            },
+                            geometry: { type: 'LineString', coordinates: traversedRoute },
                         }}
                     >
                         <MapboxGL.LineLayer
                             id="traversedRouteLayer"
-                            style={{ lineColor: 'blue', lineWidth: 10, lineOpacity: 0.5 }}
+                            style={{ lineColor: 'blue', lineWidth: 10, lineOpacity: 0.5, lineCap: 'round', lineJoin: 'round' }}
                         />
                     </MapboxGL.ShapeSource>
                 )}
+             <MapboxGL.UserLocation
+    visible={true}
+    showsUserHeadingIndicator={true}
+    onUpdate={(location) => {
+        const { longitude, latitude, heading, speed } = location.coords;
+        const newPosition = [longitude, latitude];
 
-                {/* User Location */}
-                <MapboxGL.UserLocation
-                    visible={true}
-                    onUpdate={(location) => {
-                        const { longitude, latitude, heading } = location.coords;
-                        const newPosition = [longitude, latitude];
-                        setCurrentPosition(newPosition);
-                        updateRoute(newPosition, heading); // Pass heading to updateRoute
+        setCurrentPosition(newPosition);
+        setSpeed(speed || 0);
 
-                        if (!isPanning && cameraRef.current) {
-                            cameraRef.current.setCamera({
-                                centerCoordinate: newPosition,
-                                zoomLevel: 14,
-                                pitch: 45,
-                                bearing: heading, // Set initial camera bearing to user's heading
-                                animationDuration: 500,
-                            });
-                        }
-                    }}
-                />
+        // Adjust pitch when turning (existing code)
+        // ...
+
+        // Proceed only if we have steps
+        if (instructions.length > 0 && currentStepIndex < instructions.length) {
+            const currentStep = instructions[currentStepIndex];
+            const maneuverPoint = currentStep.maneuver.location; // [longitude, latitude]
+
+            // Calculate distance to the next maneuver point
+            const from = turf.point(newPosition);
+            const to = turf.point(maneuverPoint);
+            const options = { units: 'meters' };
+
+            const distance = turf.distance(from, to, options);
+            setDistanceToNextManeuver(distance);
+
+            // Update the current instruction with the remaining distance
+            setCurrentInstruction(
+                `${currentStep.maneuver.instruction} onto ${currentStep.name} in ${Math.round(distance)} meters`
+            );
+
+            // Check if we should advance to the next step
+            if (distance < 10) {
+                if (currentStepIndex + 1 < instructions.length) {
+                    setCurrentStepIndex(currentStepIndex + 1);
+                } else {
+                    // Reached the final step
+                    if (!showModal) {
+                        setShowModal(true);
+                    }
+                }
+            }
+            
+        }
+    }}
+    locationPuck={{
+        type: 'circle',
+        circleColor: 'blue',
+        circleRadius: 10,
+        opacity: 0.8,
+    }}
+/>
+
+
             </MapboxGL.MapView>
 
-            {/* Turn-by-Turn Instruction Card */}
-            <View style={styles.instructionCard}>
-                <Text style={styles.cardTitle}>Turn-by-Turn Navigation</Text>
-                <Text style={styles.instructionText}>{currentInstruction}</Text>
-            </View>
+            {/* Current instruction card */}
+      {/* Current instruction card */}
+<TouchableOpacity onPress={toggleDropdown} style={styles.instructionCard}>
+    <Ionicons name={getManeuverIcon(currentInstruction)} size={30} color="black" style={styles.instructionIcon} />
+    <View style={{ flex: 1 }}>
+        <Text style={styles.instructionText}>{currentInstruction}</Text>
+        <Text style={styles.instructionDistance}>{Math.round(distanceToNextManeuver)} meters</Text>
+    </View>
+    <Ionicons color="black" name={isDropdownOpen ? 'chevron-up-outline' : 'chevron-down-outline'} size={30} />
+</TouchableOpacity>
 
-            {/* Recenter Button */}
+
+            {/* Animated dropdown for turn-by-turn instructions */}
+            <Animated.View style={[styles.turnList, { height: dropdownHeight }]}>
+    {isDropdownOpen && (
+        <FlatList
+            data={remainingInstructions}
+            keyExtractor={(item, index) => `instruction_${currentStepIndex + index}`}
+            renderItem={({ item }) => (
+                <View style={styles.turnCard}>
+                    <Ionicons name={getManeuverIcon(item.maneuver.instruction)} size={30} color="black" />
+                    <View style={styles.turnCardText}>
+                        <Text style={styles.turnCardDistance}>{Math.round(item.distance)} m</Text>
+                        <Text style={styles.turnCardRoad}>{item.name || 'Unknown Road'}</Text>
+                    </View>
+                </View>
+            )}
+            contentContainerStyle={{ paddingBottom: 10 }}
+        />
+    )}
+</Animated.View>
+
+
             {showRecenter && (
                 <TouchableOpacity style={styles.recenterButton} onPress={recenterMap}>
                     <Ionicons name="locate" size={30} color="black" />
                 </TouchableOpacity>
             )}
+
+            {/* Speedometer at the bottom left */}
+            <View style={styles.speedometer}>
+                <Text style={styles.speedText}>{speed > 0 ? `${Math.round(speed * 3.6)} km/h` : '0 km/h'}</Text>
+            </View>
+
+            {/* Modal for exit confirmation */}
+            <Modal
+                transparent={true}
+                visible={showExitModal}
+                animationType="slide"
+                onRequestClose={() => setShowExitModal(false)}
+            >
+                <View style={styles.modalContainer}>
+                    <View style={styles.modalContent}>
+                        <Text style={styles.modalText}>Do you want to exit navigation?</Text>
+                        <View style={styles.modalButtons}>
+                            <Button title="Yes" onPress={handleExitNavigation} />
+                            <Button title="No" onPress={() => setShowExitModal(false)} />
+                        </View>
+                    </View>
+                </View>
+            </Modal>
 
             {/* Modal for destination reached */}
             <Modal
@@ -194,8 +295,10 @@ const NavigationScreen = ({ route }) => {
                 <View style={styles.modalContainer}>
                     <View style={styles.modalContent}>
                         <Text style={styles.modalText}>Destination Reached!</Text>
-                        <Text style={styles.modalCongestionText}>Congestion: {congestionDetails}</Text>
-                        <Button title="OK" onPress={() => setShowModal(false)} />
+                        <Button title="OK" onPress={() => {
+                            setShowModal(false);
+                            navigation.goBack(); 
+                        }} />
                     </View>
                 </View>
             </Modal>
@@ -212,43 +315,102 @@ const styles = StyleSheet.create({
         left: 10,
         right: 10,
         padding: 15,
-        backgroundColor: 'rgba(255, 255, 255, 0.8)',
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'white',
         borderRadius: 10,
+        elevation: 5,
         shadowColor: '#000',
+        shadowOpacity: 0.3,
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.8,
         shadowRadius: 2,
     },
-    cardTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 10 },
-    instructionText: { fontSize: 16 },
+    instructionIcon: {
+        marginRight: 10,
+    },
+    instructionText: {
+        fontSize: 16,
+        color: 'black',
+        fontWeight: 'bold',
+        flex: 1,
+    },
     recenterButton: {
         position: 'absolute',
-        bottom: 30,
-        right: 30,
+        bottom: 20,
+        right: 20,
         backgroundColor: 'white',
-        borderRadius: 30,
+        borderRadius: 25,
         padding: 10,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.8,
-        shadowRadius: 2,
-        elevation: 5, // For Android shadow effect
+        elevation: 5,
+    },
+    turnList: {
+        position: 'absolute',
+        top: 70, // Positioned below the instruction card
+        left: 10,
+        right: 10,
+        backgroundColor: 'white',
+        padding: 0, // Remove padding when the list is closed
+        overflow: 'hidden',
+        borderRadius: 10,
+        zIndex: 5,
+    },
+    turnCard: {
+        flexDirection: 'row',
+        paddingVertical: 10, // Adjust padding for the turn card
+        borderBottomWidth: 1,
+        borderBottomColor: '#ccc',
+    },
+    turnCardText: {
+        marginLeft: 10,
+    },
+    turnCardDistance: {
+        color: 'black',
+        fontSize: 16,
+    },
+    turnCardRoad: {
+        color: 'gray',
+        fontSize: 14,
+    },
+    instructionDistance: {
+        fontSize: 14,
+        color: 'gray',
     },
     modalContainer: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        backgroundColor: 'rgba(0,0,0,0.5)',
     },
     modalContent: {
-        width: 300,
-        padding: 20,
         backgroundColor: 'white',
+        padding: 20,
         borderRadius: 10,
-        alignItems: 'center',
+        elevation: 5,
     },
-    modalText: { fontSize: 18, fontWeight: 'bold', marginBottom: 10 },
-    modalCongestionText: { fontSize: 16, marginBottom: 20 },
+    modalText: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color:'black'
+    },
+    modalButtons: {
+        flexDirection: 'row',
+        justifyContent: 'space-around',
+        marginTop: 20,
+    },
+    speedometer: {
+        position: 'absolute',
+        bottom: 20,
+        left: 10,
+        backgroundColor: 'white',
+        borderRadius: 5,
+        padding: 10,
+        elevation: 5,
+    },
+    speedText: {
+        fontSize: 16,
+        fontWeight: 'bold',
+        color: 'black',
+    },
 });
 
 export default NavigationScreen;

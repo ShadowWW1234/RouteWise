@@ -19,6 +19,11 @@ const SearchBar = ({ modalVisible, toggleModal }) => {
   const [selectedOrigin, setSelectedOrigin] = useState(null); // Store selected origin data
   const [selectedDestination, setSelectedDestination] = useState(null); // Store selected destination data
 
+  const [originSearchText, setOriginSearchText] = useState(''); // For origin search input
+  const [destinationSearchText, setDestinationSearchText] = useState(''); // For destination search input
+  const [originSearchResults, setOriginSearchResults] = useState([]); // Store search results for origin
+  const [destinationSearchResults, setDestinationSearchResults] = useState([]); // Store search results for destination
+ 
   const dispatch = useDispatch();
 
 
@@ -28,30 +33,71 @@ const SearchBar = ({ modalVisible, toggleModal }) => {
     setSearchResults([]); // Clear search results
   };
 
-const handlereset=()=>{
-  toggleModal();
-  setSearchText('');
-  setSearchResults([]);
-}
-  // Function to fetch places for destination search
-  const fetchPlaces = debounce(async (text) => {
+  const handleMapSelection = (selectedLocation) => {
+    const { latitude, longitude, description } = selectedLocation;
+    
+    setOriginSearchText(description); // Update the origin search text input
+    setSelectedOrigin(selectedLocation); // Set the selected origin
+    dispatch(setOrigin(selectedLocation)); // Set origin in Redux
+
+    setMapModalVisible(false); // Close the map modal after selecting
+  };
+
+
+  // Function to reset the search text and results
+  const handlereset = () => {
+    toggleModal();
+    setOriginSearchText('');
+    setOriginSearchResults([]);
+    setDestinationSearchText('');
+    setDestinationSearchResults([]);
+  };
+
+  // Function to fetch places for origin or destination search
+  const fetchPlaces = debounce(async (text, isOrigin = false) => {
     if (text.length > 2) {
       try {
         const response = await fetch(
           `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(text)}.json?access_token=${MAPBOX_API_TOKEN}&autocomplete=true&country=PH`
         );
         const data = await response.json();
-        setSearchResults(data.features); // Store search results
+        if (isOrigin) {
+          setOriginSearchResults(data.features); // Store search results for origin
+        } else {
+          setDestinationSearchResults(data.features); // Store search results for destination
+        }
       } catch (error) {
         console.error('Error fetching places:', error);
       }
     } else {
-      setSearchResults([]); // Clear results if input is too short
+      if (isOrigin) {
+        setOriginSearchResults([]); // Clear results if input is too short for origin
+      } else {
+        setDestinationSearchResults([]); // Clear results if input is too short for destination
+      }
     }
   }, 300);
+  
 
-  // Handle place selection for destination (second input)
-  const handlePlaceSelect = (place) => {
+
+  // Handle place selection for origin
+  const handleOriginSelect = (place) => {
+    const { center, place_name } = place;
+    const originLocation = {
+      latitude: center[1],
+      longitude: center[0],
+      description: place_name,
+    };
+
+    dispatch(setOrigin(originLocation)); // Set origin in Redux
+    setOriginSearchText(place_name); // Update the origin searchText with the place name
+    setSelectedOrigin(originLocation); // Store the origin locally
+    setOriginSet(true); // Set originSet to true when origin is selected
+   setOriginSearchResults([]);
+  };
+
+  // Handle place selection for destination
+  const handleDestinationSelect = (place) => {
     const { center, place_name } = place;
     const destinationLocation = {
       latitude: center[1],
@@ -60,51 +106,49 @@ const handlereset=()=>{
     };
 
     dispatch(setDestination(destinationLocation)); // Set destination in Redux
-    setSearchText(place_name); // Update the searchText with the place name
+    setDestinationSearchText(place_name); // Update the destination searchText with the place name
     setSelectedDestination(destinationLocation); // Store the destination locally
 
-    // Open the destination modal after selecting a destination
-    setDestinationModalVisible(true);
+    setDestinationModalVisible(true); // Open the destination modal
+   setDestinationSearchResults([]);
   };
-// Handle map selection for origin (first input)
-const handleSelectLocation = async (coordinates) => {
-  const [longitude, latitude] = coordinates;
 
-  try {
-    const reverseGeocode = await fetch(
-      `https://api.mapbox.com/geocoding/v5/mapbox.places/${longitude},${latitude}.json?access_token=${MAPBOX_API_TOKEN}`
-    );
-    const data = await reverseGeocode.json();
+   // Handle map selection for origin (from the "Map Selection" modal)
+   const handleSelectLocation = async (coordinates) => {
+    const [longitude, latitude] = coordinates;
 
-    if (data.features && data.features.length > 0) {
-      const placeName = data.features[0]?.place_name || 'Unknown Location';
-      setOriginText(placeName); // Set the place name in the first TextInput
-      const originLocation = { latitude, longitude, description: placeName };
-      setSelectedOrigin(originLocation); // Store the origin locally
+    try {
+      const reverseGeocode = await fetch(
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${longitude},${latitude}.json?access_token=${MAPBOX_API_TOKEN}`
+      );
+      const data = await reverseGeocode.json();
 
-      dispatch(setOrigin(originLocation)); // Set origin in Redux
-      setOriginSet(true); // Set originSet to true when origin is selected
-      setMapModalVisible(false); // Close the modal after selecting
-    } else {
-      console.log('No reverse geocoding results found.');
-      setOriginText('Unknown Location'); // Fallback text
+      if (data.features && data.features.length > 0) {
+        const placeName = data.features[0]?.place_name || 'Unknown Location';
+        const originLocation = { latitude, longitude, description: placeName };
+        setSelectedOrigin(originLocation); // Store the origin locally
+        dispatch(setOrigin(originLocation)); // Set origin in Redux
+        setOriginSearchText(placeName); // Update the origin text
+        setOriginSet(true); // Set originSet to true when origin is selected
+        setMapModalVisible(false); // Close the modal after selecting
+      } else {
+        setOriginSearchText('Unknown Location');
+      }
+    } catch (error) {
+      console.error('Error with reverse geocoding:', error);
+      setOriginSearchText('Error retrieving location');
     }
-  } catch (error) {
-    console.error('Error with reverse geocoding:', error);
-    setOriginText('Error retrieving location'); // Set error text if there's an issue
-  }
-};
-
+  };
 
 
 
   return (
     <Modal
-      animationType="slide"
-      transparent={false}
-      visible={modalVisible}
-      onRequestClose={toggleModal}
-    >
+    animationType="slide"
+    transparent={false}
+    visible={modalVisible}
+    onRequestClose={toggleModal}
+  >
       <SafeAreaView style={styles.modalContainer}>
         {/* Close Button */}
         <TouchableOpacity style={styles.closeButton} onPress={handlereset}>
@@ -113,35 +157,67 @@ const handleSelectLocation = async (coordinates) => {
 
         <View style={{ flex: 1 }}>
           {/* First TextInput (for Origin) */}
-          <TouchableOpacity onPress={() => setMapModalVisible(true)}>
-            <TextInput
-              style={styles.textInput}
-              placeholder="Select manual location"
-              placeholderTextColor={'gray'}
-              value={originText}
-              editable={false} // Make it non-editable (just a button to open map modal)
-            />
-          </TouchableOpacity>
+          <TextInput
+            style={styles.textInput}
+            placeholder="Select origin"
+            placeholderTextColor={'gray'}
+            value={originSearchText} // Display the selected or searched location
+            onChangeText={(text) => {
+              setOriginSearchText(text);
+              fetchPlaces(text, true); // Fetch places for origin
+            }}
+          />
 
           {/* Second TextInput (for Destination) */}
           <TextInput
-            style={styles.textInput}
-            placeholder="Where to go?"
-            placeholderTextColor={'gray'}
-            value={searchText}
-            onChangeText={(text) => {
-              setSearchText(text);
-              fetchPlaces(text); // Fetch places from Mapbox for destination
-            }}
-            editable={originSet} // Disable the input if origin is not set
+        style={styles.textInput}
+        placeholder="Search a place for your destination"
+        placeholderTextColor={'gray'}
+        value={destinationSearchText}
+        onChangeText={(text) => {
+          setDestinationSearchText(text);
+          fetchPlaces(text, false); // Fetch places for destination
+        }}
+        editable={originSet} // Disable the input if origin is not set
+      />
+       <FlatList
+            data={[{ id: 'map-pin', name: 'Pin Location on Map' }, ...originSearchResults]} // Add "Pin Location on Map" as the first option
+            keyExtractor={(item) => item.id || item.place_name}
+            renderItem={({ item }) =>
+              item.id === 'map-pin' ? (
+                <TouchableOpacity
+                  style={styles.resultItem}
+                  onPress={() => setMapModalVisible(true)} // Open map modal to pin location
+                >
+                  <View style={styles.itemContainer}>
+                    <Ionicons name="map-outline" size={24} color="black" style={styles.icon} />
+                    <View style={styles.textContainer}>
+                      <Text style={styles.title}>Pin Location on Map</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              ) : (
+                <TouchableOpacity
+                  style={styles.resultItem}
+                  onPress={() => handleOriginSelect(item)}
+                >
+                  <View style={styles.itemContainer}>
+                    <Ionicons name="location-outline" size={24} color="black" style={styles.icon} />
+                    <View style={styles.textContainer}>
+                      <Text style={styles.title}>{item.place_name}</Text>
+                      <Text style={styles.subtitle}>{item.text || 'Unknown Region'}</Text>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              )
+            }
           />
-
           {/* Display search results for destination */}
           <FlatList
-            data={searchResults}
+            data={destinationSearchResults}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
-              <TouchableOpacity style={styles.resultItem} onPress={() => handlePlaceSelect(item)}>
+              <TouchableOpacity style={styles.resultItem} onPress={() => handleDestinationSelect(item)}>
                 <View style={styles.itemContainer}>
                   <Ionicons name="location-outline" size={24} color="black" style={styles.icon} />
                   <View style={styles.textContainer}>
@@ -152,6 +228,7 @@ const handleSelectLocation = async (coordinates) => {
               </TouchableOpacity>
             )}
           />
+
         </View>
 
         {/* Map Selection Modal for selecting Origin */}

@@ -365,7 +365,7 @@ const handleGoNow = () => {
                     style={{
                         lineWidth: 10,
                         lineColor: 'blue', // All routes stay blue
-                        lineOpacity: isSelected ? 1 : 0.5, // Full opacity for selected, reduced for others
+                        lineOpacity:routeOpacity, // Full opacity for selected, reduced for others
                         lineCap: 'round',
                         lineJoin: 'round',
                     }}

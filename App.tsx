@@ -10,7 +10,7 @@ import HomeScreen from './screens/HomeScreen';
 import SearchScreen from './screens/SearchScreen';
 import RouteDetailsScreen from './screens/RouteDetailsScreen';
 import NavigationScreen from './screens/NavigationScreen';
-
+import StopSearchScreen from './screens/modals/StopSearchScreen';
 // Create Stack Navigator
 const Stack = createNativeStackNavigator();
 
@@ -86,6 +86,12 @@ const App = () => {
               component={NavigationScreen}
               options={{ headerShown: false }}
             />
+             <Stack.Screen
+              name="StopSearchScreen"
+              component={StopSearchScreen}
+              options={{ headerShown: true,title:'Add stop',  headerTitleAlign: 'center' }}
+            />
+            
           </Stack.Navigator>
         </NavigationContainer>
       </MapStyleProvider>

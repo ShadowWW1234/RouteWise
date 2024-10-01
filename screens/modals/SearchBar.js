@@ -7,6 +7,7 @@ import { setOrigin, setDestination } from '../../slices/navSlice';
 import MapSelectionModal from './MapSelectionModal';
 import DestinationModal from './DestinationModal';
 import {  MAPBOX_API_TOKEN } from '@env';
+import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
 
  
 const SearchBar = ({ modalVisible, toggleModal }) => {
@@ -155,14 +156,25 @@ const SearchBar = ({ modalVisible, toggleModal }) => {
     <Ionicons name="close" size={32} color="black" />
   </TouchableOpacity>
 
-  <View style={{ flex: 1 }}>
+ 
+    <GestureHandlerRootView style={{ flex: 1 }}>
+  
+    <View style={{ flex: 1 }}>
+  {/* Container for TextInputs */}
+  <View style={{ flexGrow: 0 }}>
     {/* First TextInput (for Origin) with Icon */}
     <View style={styles.inputContainer}>
-      <Ionicons name="pin-outline" size={24} color="black" style={styles.icon} />
+      <Ionicons
+        name="locate-outline"
+        size={24}
+        color="red"
+        style={styles.icon}
+        onPress={() => setMapModalVisible(true)}
+      />
       <TextInput
         style={styles.textInputWithIcon}
         placeholder="Search or pin a location"
-        placeholderTextColor={'gray'}
+        placeholderTextColor="gray"
         value={originSearchText} // Display the selected or searched location
         onChangeText={(text) => {
           setOriginSearchText(text);
@@ -177,7 +189,7 @@ const SearchBar = ({ modalVisible, toggleModal }) => {
       <TextInput
         style={styles.textInputWithIcon}
         placeholder="Search a place for your destination"
-        placeholderTextColor={'gray'}
+        placeholderTextColor="gray"
         value={destinationSearchText}
         onChangeText={(text) => {
           setDestinationSearchText(text);
@@ -186,36 +198,26 @@ const SearchBar = ({ modalVisible, toggleModal }) => {
         editable={originSet} // Disable the input if origin is not set
       />
     </View>
+  </View>
 
+  {/* ScrollView for both origin and destination FlatLists */}
+  <ScrollView style={{ flexGrow: 1 }}>
     {/* FlatList for origin search results */}
     <FlatList
-      data={[{ id: 'map-pin', name: 'Pin Location on Map' }, ...originSearchResults]} // Add "Pin Location on Map" as the first option
+      data={originSearchResults}
       keyExtractor={(item) => item.id || item.place_name}
-      renderItem={({ item }) =>
-        item.id === 'map-pin' ? (
-          <TouchableOpacity
-            style={styles.resultItem}
-            onPress={() => setMapModalVisible(true)} // Open map modal to pin location
-          >
-            <View style={styles.itemContainer}>
-              <Ionicons name="map-outline" size={24} color="black" style={styles.icon} />
-              <View style={styles.textContainer}>
-                <Text style={styles.title}>Pin Location on Map</Text>
-              </View>
+      renderItem={({ item }) => (
+        <TouchableOpacity style={styles.resultItem} onPress={() => handleOriginSelect(item)}>
+          <View style={styles.itemContainer}>
+            <Ionicons name="location-outline" size={24} color="black" style={styles.icon} />
+            <View style={styles.textContainer}>
+              <Text style={styles.title}>{item.place_name}</Text>
+              <Text style={styles.subtitle}>{item.text || 'Unknown Region'}</Text>
             </View>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity style={styles.resultItem} onPress={() => handleOriginSelect(item)}>
-            <View style={styles.itemContainer}>
-              <Ionicons name="location-outline" size={24} color="black" style={styles.icon} />
-              <View style={styles.textContainer}>
-                <Text style={styles.title}>{item.place_name}</Text>
-                <Text style={styles.subtitle}>{item.text || 'Unknown Region'}</Text>
-              </View>
-            </View>
-          </TouchableOpacity>
-        )
-      }
+          </View>
+        </TouchableOpacity>
+      )}
+      scrollEnabled={false} // Disable internal FlatList scrolling
     />
 
     {/* FlatList for destination search results */}
@@ -233,8 +235,14 @@ const SearchBar = ({ modalVisible, toggleModal }) => {
           </View>
         </TouchableOpacity>
       )}
+      scrollEnabled={false} // Disable internal FlatList scrolling
     />
-  </View>
+  </ScrollView>
+</View>
+
+    </GestureHandlerRootView>
+
+ 
 
   {/* Map Selection Modal for selecting Origin */}
   <MapSelectionModal
@@ -259,6 +267,8 @@ const SearchBar = ({ modalVisible, toggleModal }) => {
 };
 
 export default SearchBar;
+
+
 const styles = StyleSheet.create({
   modalContainer: {
     flex: 1,

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef, useContext, useMemo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, Button, BackHandler, FlatList, Animated } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, Button, BackHandler, FlatList, Animated,AppState  } from 'react-native';
 import MapboxGL, { LineJoin } from '@rnmapbox/maps';
 import * as turf from '@turf/turf';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -9,6 +9,8 @@ import BottomSheet from '@gorhom/bottom-sheet';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import RouteInfoCard from './RouteInfoCard';
 import { MAPBOX_API_TOKEN } from '@env';
+import { useNavigation } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 MapboxGL.setAccessToken(MAPBOX_API_TOKEN);
 
@@ -23,9 +25,60 @@ const getManeuverIcon = (instruction) => {
     }
     return "navigate-outline"; // Default icon
 };
- 
+const saveRouteToStorage = async (routeData, instructions, eta, currentRoadName) => {
+    try {
+        const routeDataString = JSON.stringify(routeData);
+        const instructionsString = JSON.stringify(instructions);
+        await AsyncStorage.multiSet([
+            ['@routeData', routeDataString],
+            ['@instructions', instructionsString],
+            ['@eta', eta ? eta.toString() : ''],
+            ['@currentRoadName', currentRoadName]
+        ]);
+    } catch (error) {
+        console.error('Error saving route data to storage:', error);
+    }
+};
+
+
+const loadRouteFromStorage = async () => {
+    try {
+        const values = await AsyncStorage.multiGet([
+            '@routeData',
+            '@instructions',
+            '@eta',
+            '@currentRoadName'
+        ]);
+        const routeDataString = values[0][1];
+        const instructionsString = values[1][1];
+        const etaString = values[2][1];
+        const roadNameString = values[3][1];
+
+        if (routeDataString) {
+            const routeData = JSON.parse(routeDataString);
+            setFullRoute(routeData.geometry.coordinates); // Restore route
+        }
+
+        if (instructionsString) {
+            const restoredInstructions = JSON.parse(instructionsString);
+            setInstructions(restoredInstructions); // Restore instructions
+        }
+
+        if (etaString) {
+            setEta(new Date(etaString)); // Restore ETA
+        }
+
+        if (roadNameString) {
+            setCurrentRoadName(roadNameString); // Restore the current road name
+        }
+    } catch (error) {
+        console.error('Error loading route data from storage:', error);
+    }
+};
+
 const NavigationScreen = ({ route, navigation }) => {
-    const { origin, destination, route: selectedRoute, destinationName } = route.params || {};
+ 
+    const { origin, destination, stop = null, route: selectedRoute, destinationName } = route.params || {};
     const [currentPosition, setCurrentPosition] = useState(null);
     const [traversedRoute, setTraversedRoute] = useState([]);
     const [nonTraversedRoute, setNonTraversedRoute] = useState([]);
@@ -58,7 +111,12 @@ const NavigationScreen = ({ route, navigation }) => {
     const [eta, setEta] = useState(null); // Estimated Time of Arrival
     const [currentRoadName, setCurrentRoadName] = useState('');
     const [congestionSegments, setCongestionSegments] = useState([]);
-
+    const [appState, setAppState] = useState(AppState.currentState);
+    
+    
+    useEffect(() => {
+        console.log('Stop data:', stop); // Check if stop data is received
+      }, [stop]);
     // Congestion color mapping function
     const getCongestionColor = (congestionValue) => {
         if (congestionValue === null) {
@@ -94,14 +152,14 @@ const NavigationScreen = ({ route, navigation }) => {
             // Map the congestion data into segments with colors
             const segments = selectedRoute.coordinates.map((coord, i) => {
                 if (i === selectedRoute.coordinates.length - 1) return null;
-
-                const congestionValue = selectedRoute.congestionNumeric[i];
+    
+                const congestionValue = selectedRoute.congestionNumeric[i]; // Get the congestion value
                 const [lon1, lat1] = coord;
                 const [lon2, lat2] = selectedRoute.coordinates[i + 1];
-                const congestionColor = getCongestionColor(congestionValue);
-
+                const congestionColor = getCongestionColor(congestionValue); // Get the color based on congestion value
+    
                 if (!shouldRenderSegment(congestionValue)) return null;
-
+    
                 return {
                     type: 'Feature',
                     geometry: {
@@ -113,16 +171,29 @@ const NavigationScreen = ({ route, navigation }) => {
                     }
                 };
             }).filter(segment => segment !== null);
-
+    
             setCongestionSegments(segments);
         }
     }, [selectedRoute]);
+
+
+    const splitCoordinates = (coordinates, maxPerRequest) => {
+        const chunks = [];
+        for (let i = 0; i < coordinates.length; i += maxPerRequest - 1) {
+            const chunk = coordinates.slice(i, i + maxPerRequest);
+            if (chunk.length > 1) {
+                chunks.push(chunk);
+            }
+        }
+        return chunks;
+    };
+    
 
     const recalculateRoute = async (currentPosition) => {
         try {
             const originCoordinates = `${currentPosition[0]},${currentPosition[1]}`;
             const destinationCoordinates = `${destination.longitude},${destination.latitude}`;
-
+    
             const response = await axios.get(
                 `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${originCoordinates};${destinationCoordinates}`,
                 {
@@ -135,39 +206,43 @@ const NavigationScreen = ({ route, navigation }) => {
                     }
                 }
             );
-
+    
             const routeData = response.data.routes[0];
             setFullRoute(routeData.geometry.coordinates);
             setInstructions(routeData.legs[0].steps);
-
+    
             setTotalDistance(routeData.distance);
             setTotalDuration(routeData.duration);
             setRemainingDistance(routeData.distance);
             setRemainingDuration(routeData.duration);
-
+    
             setCurrentStepIndex(0);
-
+    
             if (routeData.legs[0].steps.length > 0) {
                 const firstStep = routeData.legs[0].steps[0];
                 setCurrentInstruction(`${firstStep.maneuver.instruction} onto ${firstStep.name}`);
             }
-
+    
             setIsRecalculating(false);
         } catch (error) {
             console.error('Error recalculating directions:', error);
             setIsRecalculating(false);
         }
     };
-
-
-
+    
     const fetchDirections = async () => {
+        if (!origin || !destination) {
+            console.error('Warning: Origin or destination is missing!');
+            return;
+        }
+    
         const originCoordinates = `${origin.longitude},${origin.latitude}`;
+        const stopCoordinates = stop ? `${stop.longitude},${stop.latitude};` : '';
         const destinationCoordinates = `${destination.longitude},${destination.latitude}`;
-
+    
         try {
             const response = await axios.get(
-                `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${originCoordinates};${destinationCoordinates}`,
+                `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${originCoordinates};${stopCoordinates}${destinationCoordinates}`,
                 {
                     params: {
                         access_token: MAPBOX_API_TOKEN,
@@ -178,22 +253,85 @@ const NavigationScreen = ({ route, navigation }) => {
                     }
                 }
             );
-
+    
             const routeData = response.data.routes[0];
-            setTraversedRoute(routeData.geometry.coordinates);
-            setNonTraversedRoute(routeData.geometry.coordinates);
-            setFullRoute(routeData.geometry.coordinates); // Set the full route
-            setInstructions(routeData.legs[0].steps); // Contains detailed steps
-        
-            if (routeData.legs[0].steps.length > 0) {
-                const firstStep = routeData.legs[0].steps[0];
-                setCurrentInstruction(`${firstStep.maneuver.instruction} onto ${firstStep.name}`);
-            }
+            setFullRoute(routeData.geometry.coordinates); // Update the route with the stop
+            setInstructions(routeData.legs[0].steps); // Set detailed steps
+            const etaTime = calculateETA(routeData.duration); // Calculate ETA using new function
+            setEta(etaTime);
+            setCurrentRoadName(routeData.legs[0].summary); // Update road name
+    
+            // Save the data
+            saveRouteToStorage(routeData, routeData.legs[0].steps, etaTime, routeData.legs[0].summary);
         } catch (error) {
             console.error('Error fetching directions:', error);
         }
     };
+    
+    
+    
+    useEffect(() => {
+        const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
+            if (appState.match(/inactive|background/) && nextAppState === 'active') {
+                // Recalculate the route with the stop when app comes to the foreground
+                loadRouteFromStorage(); // Restore saved route data
+            }
+            setAppState(nextAppState);
+        });
+    
+        return () => {
+            appStateSubscription.remove();
+        };
+    }, [appState]);
 
+    const calculateETA = (durationInSeconds) => {
+        const currentTime = new Date();
+        const eta = new Date(currentTime.getTime() + durationInSeconds * 1000);
+        return eta;
+    };
+    
+    
+
+    useEffect(() => {
+        const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
+            if (appState.match(/inactive|background/) && nextAppState === 'active') {
+                // Recalculate the route with the stop when app comes to the foreground
+                fetchDirections(route.params?.stop);
+            }
+            setAppState(nextAppState);
+        });
+    
+        return () => {
+            appStateSubscription.remove();
+        };
+    }, [appState, route.params?.stop]);
+    
+    useEffect(() => {
+        if (origin && destination) {
+            // Clear any existing route fragments
+            setFullRoute([]);
+            setTraversedRoute([]);
+            setNonTraversedRoute([]);
+    
+            // Fetch the new route
+            fetchDirections(stop);
+        }
+    }, [origin, destination, stop]);  // Ensure the stop triggers a new fetch
+    
+
+    useEffect(() => {
+        console.log('Fetching directions with stop:', stop);
+        fetchDirections(stop); // Include stop in the recalculation
+    }, [origin, destination, stop]);
+    
+
+    const handleAddStop = () => {
+        navigation.navigate('StopSearchScreen', {
+            origin,
+            destination,
+            currentRoute: fullRoute,  // Pass the current route to the StopSearchScreen
+        });
+    };
     
   
     useEffect(() => {
@@ -314,33 +452,36 @@ const NavigationScreen = ({ route, navigation }) => {
                 />
    
    
-   {/* Base Route (blue line) */}
- 
    {fullRoute.length > 0 && (
-                        <MapboxGL.ShapeSource id="routeSource" shape={{ type: 'Feature', geometry: { type: 'LineString', coordinates: fullRoute } }}>
-                            <MapboxGL.LineLayer id="routeLayer" style={{ lineColor: 'blue', lineWidth: 10, lineOpacity: 0.5, lineCap: 'round', lineJoin: 'round' }} />
-                        </MapboxGL.ShapeSource>
-                    )}
+    <MapboxGL.ShapeSource id="routeSource" shape={{ type: 'Feature', geometry: { type: 'LineString', coordinates: fullRoute } }}>
+        <MapboxGL.LineLayer id="routeLayer" style={{ lineColor: 'blue', lineWidth: 8, lineCap: 'round', lineJoin: 'round' }} />
+    </MapboxGL.ShapeSource>
+)}
+
+
+
   {/* Congestion Route Segments */}
   {congestionSegments.length > 0 && (
-                        <MapboxGL.ShapeSource
-                            id="congestionSource"
-                            shape={{
-                                type: 'FeatureCollection',
-                                features: congestionSegments
-                            }}
-                        >
-                            <MapboxGL.LineLayer
-                                id="congestionLayer"
-                                style={{
-                                    lineWidth: 8,
-                                    lineColor: ['get', 'color'],
-                                    lineCap: 'round',
-                                    lineJoin: 'round',
-                                }}
-                            />
-                        </MapboxGL.ShapeSource>
-                    )}
+    <MapboxGL.ShapeSource
+        id="congestionSource"
+        shape={{
+            type: 'FeatureCollection',
+            features: congestionSegments
+        }}
+    >
+        <MapboxGL.LineLayer
+            id="congestionLayer"
+            style={{
+                lineWidth: 8, // Thinner or the same width as the base route
+                lineColor: ['get', 'color'], // Using the congestion color from the properties
+                lineCap: 'round',
+                lineJoin: 'round',
+                lineOpacity: 1,  // Make it fully visible
+            }}
+        />
+    </MapboxGL.ShapeSource>
+)}
+
 
              <MapboxGL.UserLocation
       visible={true}
@@ -403,7 +544,7 @@ if (isFollowing && showRecenter) {
 
              // Update the current instruction with the remaining distance
             setCurrentInstruction(
-                `${currentStep.maneuver.instruction} onto ${currentStep.name}`
+               ` ${currentStep.maneuver.instruction} onto ${currentStep.name}`
             );
 
             // Check if we should advance to the next step
@@ -460,6 +601,28 @@ setEta(etaTime);
         opacity: 0.8,
     }}
 />
+
+
+   
+{/* Destination Annotation */}
+{destination && (
+        <MapboxGL.PointAnnotation
+            id="destination"
+            coordinate={[destination.longitude, destination.latitude]}
+        >
+            <MapboxGL.Callout title="Destination" />
+        </MapboxGL.PointAnnotation>
+    )}
+   
+   {stop && stop.longitude && stop.latitude && (
+  <MapboxGL.PointAnnotation
+      id="stop"
+      coordinate={[stop.longitude, stop.latitude]}
+  >
+      
+      <MapboxGL.Callout title="Stop" />
+  </MapboxGL.PointAnnotation>
+)}
 
 
             </MapboxGL.MapView>
@@ -566,10 +729,7 @@ setEta(etaTime);
     <RouteInfoCard
   destinationName={destinationName}
   viaRoad={currentRoadName} // Replace with the actual road name variable
-  onAddStop={() => {
-    // Handle the add stop action
-    console.log('Add Stop pressed');
-  }}
+  onAddStop={handleAddStop}
 />
   </View>
 
@@ -714,7 +874,12 @@ const styles = StyleSheet.create({
         borderRadius:10,
         top: 20,
         alignItems:'center'
-      }
+      },  customMarker: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 40,
+        height: 40,
+    },
       
 });
 

@@ -19,7 +19,8 @@ const MapScreen = ({ destination }) => {
   const [currentSpeed, setCurrentSpeed] = useState(0); // State for speed
   const [isRecentered, setIsRecentered] = useState(true); // Track if the map is centered
   const cameraRef = useRef(null);
-
+  const [locationError, setLocationError] = useState(null); // State for GPS error
+  
 
   const handleMapError = (error) => {
     if (error.message.includes('Source mapboxUserLocation is not in style')) {
@@ -29,7 +30,8 @@ const MapScreen = ({ destination }) => {
     console.error('Map load error:', error);
     setMapError(error.message);
   };
-  
+ 
+ 
   const requestLocationPermission = async () => {
     try {
       const granted = await PermissionsAndroid.request(
@@ -47,13 +49,28 @@ const MapScreen = ({ destination }) => {
         getLocation();
       } else {
         console.log('Location permission denied');
+        setLocationError('Location permission denied');
       }
     } catch (err) {
       console.warn(err);
     }
   };
 
-
+  // Handle different types of location errors
+  const handleLocationError = (error) => {
+    switch (error.code) {
+      case 1: // PERMISSION_DENIED
+        setLocationError('Permission denied. Please allow access to location.');
+        break;
+      case 2: // POSITION_UNAVAILABLE
+        setLocationError('Position unavailable. Please check your GPS.');
+        break;
+    
+      default:
+        setLocationError('An unknown error occurred while fetching location.');
+        break;
+    }
+  };
   const getLocation = () => {
     Geolocation.getCurrentPosition(
       (position) => {
@@ -64,14 +81,17 @@ const MapScreen = ({ destination }) => {
             description: 'Your current location',
           })
         );
+        setLocationError(null); // Clear previous error
       },
       (error) => {
-        console.error('Error getting location:', error);
+       // console.error('Error getting location:', error);
+        handleLocationError(error); // Handle error
       },
       { enableHighAccuracy: true, timeout: 60000, maximumAge: 1000 }
     );
   };
-  useEffect(() => {
+
+useEffect(() => {
     requestLocationPermission();
   }, [dispatch]);
 
@@ -85,12 +105,13 @@ const MapScreen = ({ destination }) => {
       });
     }
   }, [destination]);
-  // Function to recenter the map on the user's location
-  const recenterMap = () => {
+
+   // Function to recenter the map on the user's location
+   const recenterMap = () => {
     if (origin.location && cameraRef.current) {
       cameraRef.current.setCamera({
         centerCoordinate: [origin.location.longitude, origin.location.latitude],
-        zoomLevel: 14,
+        zoomLevel: 18,
         animationDuration: 500, // Smooth animation back to user's location
       });
       setIsRecentered(true); // Track if map is centered
@@ -99,18 +120,20 @@ const MapScreen = ({ destination }) => {
 
   return (
     <View style={styles.container}>
-      {mapError && <Text style={{ color: 'red' }}>Error loading map: {mapError}</Text>}
-      <MapboxGL.MapView
-  ref={mapRef}
-  style={styles.map}
-  zoomEnabled={true}
-  styleURL={mapStyle}
-  onError={handleMapError}
-  onCameraChanged={() => setIsRecentered(false)}  // Trigger when the map is moved
-  onMapIdle={() => setIsRecentered(false)}  // Optional: Trigger when map movement stops
->
+         {mapError && <Text  style={styles.errorText}>Error loading map: {mapError}</Text>}
+      {locationError && <Text style={styles.errorText}>{locationError}</Text>}  
+        <MapboxGL.MapView
+        ref={mapRef}
+        style={styles.map}
+        zoomEnabled={true}
+        styleURL={mapStyle}
+        onError={handleMapError}
+        onCameraChanged={() => setIsRecentered(false)}  // Trigger when the map is moved
+        onMapIdle={() => setIsRecentered(false)}  // Optional: Trigger when map movement stops
+      >
 
-        <MapboxGL.Camera
+<MapboxGL.Camera
+          ref={cameraRef}
           zoomLevel={18}
           centerCoordinate={
             origin.location
@@ -118,10 +141,12 @@ const MapScreen = ({ destination }) => {
               : [120.89943929038361, 14.488862043596518] // Fallback to static location
           }
           pitch={60}
-          animationMode="none" // Disable animation mode
+          animationMode="flyTo" // Allow smooth transitions
+          followUserLocation={false} // Disable automatic following of user location
         />
 
-        {mapStyle && mapStyle.includes('mapbox://styles/mapbox') && (
+    
+{mapStyle && mapStyle.includes('mapbox://styles/mapbox') && (
           <MapboxGL.UserLocation
             androidRenderMode="gps"
             visible={true}
@@ -142,6 +167,7 @@ const MapScreen = ({ destination }) => {
         )}
       </MapboxGL.MapView>
 
+
       {/* Recenter Button */}
       {!isRecentered && (
         <TouchableOpacity style={styles.recenterButton} onPress={recenterMap}>
@@ -150,7 +176,7 @@ const MapScreen = ({ destination }) => {
       )}
       {/* Speedometer */}
       <View style={styles.speedometer}>
-        <Text style={styles.speedometerText}>{(currentSpeed * 3.6).toFixed(1)}</Text>
+        <Text style={styles.speedometerText}>{Math.round(currentSpeed * 3.6) }</Text>
        <Text  > km/h</Text>
       </View>
     </View>
@@ -164,14 +190,13 @@ const styles = StyleSheet.create({
   map: { flex: 1 },
   recenterButton: {
     position: 'absolute',
-    bottom:90,
+    bottom: 90,
     right: 20,
-    backgroundColor: 'white', // Semi-transparent black background
+    backgroundColor: 'white',
     borderRadius: 50,
     padding: 10,
     alignItems: 'center',
     justifyContent: 'center',
-     
   },
   speedometer: {
     position: 'absolute',
@@ -189,4 +214,9 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     
   },
+  errorText:{
+    color:'red',
+alignSelf:'center'
+  }
+
 });

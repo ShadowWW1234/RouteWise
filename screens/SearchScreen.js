@@ -8,6 +8,7 @@ import MapScreen from '../screens/MapScreen';
 import SideBar from '../screens/SideBar';
 import DestinationModal from '../screens/modals/DestinationModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 const SearchScreen = () => {
     const [modalVisible, setModalVisible] = useState(false);
@@ -87,7 +88,10 @@ const SearchScreen = () => {
                         <Ionicons name="chevron-forward-outline" size={10} color="black" />
                     </View>
                 </TouchableOpacity>
+                <GestureHandlerRootView style={{ flex: 1 }}>
                 <VehicleTypeSelection modalVisible={modalVisible} toggleModal={toggleModal} />
+                </GestureHandlerRootView>
+
             </View>
 
             {/* SearchBar Modal */}
@@ -163,7 +167,7 @@ const styles = StyleSheet.create({
     },
     overlayContainer: {
         position: 'absolute',
-        bottom: 55,
+        bottom: 15,
         left: '50%',
         transform: [{ translateX: -90 }],
         width: 180,

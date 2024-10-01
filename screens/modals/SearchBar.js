@@ -149,28 +149,33 @@ const SearchBar = ({ modalVisible, toggleModal }) => {
     visible={modalVisible}
     onRequestClose={toggleModal}
   >
-      <SafeAreaView style={styles.modalContainer}>
-        {/* Close Button */}
-        <TouchableOpacity style={styles.closeButton} onPress={handlereset}>
-          <Ionicons name="close" size={32} color="black" />
-        </TouchableOpacity>
+     <SafeAreaView style={styles.modalContainer}>
+  {/* Close Button */}
+  <TouchableOpacity style={styles.closeButton} onPress={handlereset}>
+    <Ionicons name="close" size={32} color="black" />
+  </TouchableOpacity>
 
-        <View style={{ flex: 1 }}>
-          {/* First TextInput (for Origin) */}
-          <TextInput
-            style={styles.textInput}
-            placeholder="Select origin"
-            placeholderTextColor={'gray'}
-            value={originSearchText} // Display the selected or searched location
-            onChangeText={(text) => {
-              setOriginSearchText(text);
-              fetchPlaces(text, true); // Fetch places for origin
-            }}
-          />
+  <View style={{ flex: 1 }}>
+    {/* First TextInput (for Origin) with Icon */}
+    <View style={styles.inputContainer}>
+      <Ionicons name="pin-outline" size={24} color="black" style={styles.icon} />
+      <TextInput
+        style={styles.textInputWithIcon}
+        placeholder="Search or pin a location"
+        placeholderTextColor={'gray'}
+        value={originSearchText} // Display the selected or searched location
+        onChangeText={(text) => {
+          setOriginSearchText(text);
+          fetchPlaces(text, true); // Fetch places for origin
+        }}
+      />
+    </View>
 
-          {/* Second TextInput (for Destination) */}
-          <TextInput
-        style={styles.textInput}
+    {/* Second TextInput (for Destination) with Icon */}
+    <View style={styles.inputContainer}>
+      <Ionicons name="location-outline" size={24} color="black" style={styles.icon} />
+      <TextInput
+        style={styles.textInputWithIcon}
         placeholder="Search a place for your destination"
         placeholderTextColor={'gray'}
         value={destinationSearchText}
@@ -180,80 +185,80 @@ const SearchBar = ({ modalVisible, toggleModal }) => {
         }}
         editable={originSet} // Disable the input if origin is not set
       />
-       <FlatList
-            data={[{ id: 'map-pin', name: 'Pin Location on Map' }, ...originSearchResults]} // Add "Pin Location on Map" as the first option
-            keyExtractor={(item) => item.id || item.place_name}
-            renderItem={({ item }) =>
-              item.id === 'map-pin' ? (
-                <TouchableOpacity
-                  style={styles.resultItem}
-                  onPress={() => setMapModalVisible(true)} // Open map modal to pin location
-                >
-                  <View style={styles.itemContainer}>
-                    <Ionicons name="map-outline" size={24} color="black" style={styles.icon} />
-                    <View style={styles.textContainer}>
-                      <Text style={styles.title}>Pin Location on Map</Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              ) : (
-                <TouchableOpacity
-                  style={styles.resultItem}
-                  onPress={() => handleOriginSelect(item)}
-                >
-                  <View style={styles.itemContainer}>
-                    <Ionicons name="location-outline" size={24} color="black" style={styles.icon} />
-                    <View style={styles.textContainer}>
-                      <Text style={styles.title}>{item.place_name}</Text>
-                      <Text style={styles.subtitle}>{item.text || 'Unknown Region'}</Text>
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              )
-            }
-          />
-          {/* Display search results for destination */}
-          <FlatList
-            data={destinationSearchResults}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <TouchableOpacity style={styles.resultItem} onPress={() => handleDestinationSelect(item)}>
-                <View style={styles.itemContainer}>
-                  <Ionicons name="location-outline" size={24} color="black" style={styles.icon} />
-                  <View style={styles.textContainer}>
-                    <Text style={styles.title}>{item.place_name}</Text>
-                    <Text style={styles.subtitle}>{item.text || 'Unknown Region'}</Text>
-                  </View>
-                </View>
-              </TouchableOpacity>
-            )}
-          />
+    </View>
 
-        </View>
+    {/* FlatList for origin search results */}
+    <FlatList
+      data={[{ id: 'map-pin', name: 'Pin Location on Map' }, ...originSearchResults]} // Add "Pin Location on Map" as the first option
+      keyExtractor={(item) => item.id || item.place_name}
+      renderItem={({ item }) =>
+        item.id === 'map-pin' ? (
+          <TouchableOpacity
+            style={styles.resultItem}
+            onPress={() => setMapModalVisible(true)} // Open map modal to pin location
+          >
+            <View style={styles.itemContainer}>
+              <Ionicons name="map-outline" size={24} color="black" style={styles.icon} />
+              <View style={styles.textContainer}>
+                <Text style={styles.title}>Pin Location on Map</Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity style={styles.resultItem} onPress={() => handleOriginSelect(item)}>
+            <View style={styles.itemContainer}>
+              <Ionicons name="location-outline" size={24} color="black" style={styles.icon} />
+              <View style={styles.textContainer}>
+                <Text style={styles.title}>{item.place_name}</Text>
+                <Text style={styles.subtitle}>{item.text || 'Unknown Region'}</Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+        )
+      }
+    />
 
-        {/* Map Selection Modal for selecting Origin */}
-        <MapSelectionModal
-          modalVisible={mapModalVisible}
-          toggleModal={() => setMapModalVisible(false)}
-          onSelectLocation={handleSelectLocation}
-        />
+    {/* FlatList for destination search results */}
+    <FlatList
+      data={destinationSearchResults}
+      keyExtractor={(item) => item.id}
+      renderItem={({ item }) => (
+        <TouchableOpacity style={styles.resultItem} onPress={() => handleDestinationSelect(item)}>
+          <View style={styles.itemContainer}>
+            <Ionicons name="location-outline" size={24} color="black" style={styles.icon} />
+            <View style={styles.textContainer}>
+              <Text style={styles.title}>{item.place_name}</Text>
+              <Text style={styles.subtitle}>{item.text || 'Unknown Region'}</Text>
+            </View>
+          </View>
+        </TouchableOpacity>
+      )}
+    />
+  </View>
 
-        {/* Destination Modal (opens after destination is selected) */}
-        {destinationModalVisible && (
-          <DestinationModal
-            modalVisible={destinationModalVisible}
-            toggleModal={() => setDestinationModalVisible(false)}
-            origin={selectedOrigin}
-            destination={selectedDestination}
-          />
-        )}
-      </SafeAreaView>
+  {/* Map Selection Modal for selecting Origin */}
+  <MapSelectionModal
+    modalVisible={mapModalVisible}
+    toggleModal={() => setMapModalVisible(false)}
+    onSelectLocation={handleSelectLocation}
+  />
+
+  {/* Destination Modal (opens after destination is selected) */}
+  {destinationModalVisible && (
+    <DestinationModal
+      modalVisible={destinationModalVisible}
+      toggleModal={() => setDestinationModalVisible(false)}
+      origin={selectedOrigin}
+      destination={selectedDestination}
+    />
+  )}
+</SafeAreaView>
+
     </Modal>
   );
 };
 
 export default SearchBar;
-
 const styles = StyleSheet.create({
   modalContainer: {
     flex: 1,
@@ -263,15 +268,23 @@ const styles = StyleSheet.create({
   closeButton: {
     alignSelf: 'flex-end',
   },
-  textInput: {
-    height: 50,
+  inputContainer: {
+    flexDirection: 'row', // Ensure icon and text input are in a row
+    alignItems: 'center', // Vertically align the icon and text input
     borderWidth: 1,
     borderColor: '#ddd',
     borderRadius: 10,
-    paddingHorizontal: 15,
-    backgroundColor: '#fff',
-    fontSize: 16,
     marginBottom: 10,
+    backgroundColor: '#fff',
+  },
+  icon: {
+    marginLeft: 10, // Add some space to the left of the icon
+  },
+  textInputWithIcon: {
+    flex: 1, // Take up the remaining space
+    height: 50,
+    paddingHorizontal: 10,
+    fontSize: 16,
     color: 'black',
   },
   resultItem: {
@@ -282,9 +295,6 @@ const styles = StyleSheet.create({
   itemContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  icon: {
-    marginRight: 10,
   },
   textContainer: {
     flex: 1,

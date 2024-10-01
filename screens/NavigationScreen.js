@@ -8,7 +8,7 @@ import axios from 'axios';
 import BottomSheet from '@gorhom/bottom-sheet';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import RouteInfoCard from './RouteInfoCard';
-import {  MAPBOX_API_TOKEN } from '@env';
+import { MAPBOX_API_TOKEN } from '@env';
 
 MapboxGL.setAccessToken(MAPBOX_API_TOKEN);
 
@@ -25,94 +25,143 @@ const getManeuverIcon = (instruction) => {
 };
  
 const NavigationScreen = ({ route, navigation }) => {
-    const { origin, destination,destinationName  } = route.params || {};
+    const { origin, destination, route: selectedRoute, destinationName } = route.params || {};
     const [currentPosition, setCurrentPosition] = useState(null);
-     const [traversedRoute, setTraversedRoute] = useState([]);
+    const [traversedRoute, setTraversedRoute] = useState([]);
     const [nonTraversedRoute, setNonTraversedRoute] = useState([]);
-    const [isFollowing, setIsFollowing] = useState(true); // Track if the camera is following the user
+    const [isFollowing, setIsFollowing] = useState(true);
     const [showModal, setShowModal] = useState(false);
-    const [showExitModal, setShowExitModal] = useState(false); // Exit navigation modal
+    const [showExitModal, setShowExitModal] = useState(false);
     const { mapStyle } = useContext(MapStyleContext);
     const [instructions, setInstructions] = useState([]);
     const [currentInstruction, setCurrentInstruction] = useState('');
-    const [showRecenter, setShowRecenter] = useState(false); // Show recenter button when not following
-    const [speed, setSpeed] = useState(0); // Speed state
-    const [isDropdownOpen, setIsDropdownOpen] = useState(false); // Dropdown open/close state
-    const dropdownHeight = useRef(new Animated.Value(0)).current; // Animation value for dropdown
-    const [followPitch, setFollowPitch] = useState(70); // Initial pitch
-    const [currentStepIndex, setCurrentStepIndex] = useState(0); // Index of the current step
-    const [distanceToNextManeuver, setDistanceToNextManeuver] = useState(0); // Distance to the next maneuver
+    const [showRecenter, setShowRecenter] = useState(false);
+    const [speed, setSpeed] = useState(0);
+    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+    const dropdownHeight = useRef(new Animated.Value(0)).current;
+    const [followPitch, setFollowPitch] = useState(70);
+    const [currentStepIndex, setCurrentStepIndex] = useState(0);
+    const [distanceToNextManeuver, setDistanceToNextManeuver] = useState(0);
     const remainingInstructions = instructions.slice(currentStepIndex);
 
-const [fullRoute, setFullRoute] = useState([]); // Store the full route coordinates
-const [isRecalculating, setIsRecalculating] = useState(false); // Prevent multiple recalculations
-const [lastRecalculationTime, setLastRecalculationTime] = useState(0); // Debounce recalculations
-const [prevHeading, setPrevHeading] = useState(null);
- 
-const snapPoints = useMemo(() => ['10%', '50%', '90%'], []);
-const bottomSheetRef = useRef(null);
+    const [fullRoute, setFullRoute] = useState([]); // Store the full route coordinates
+    const [isRecalculating, setIsRecalculating] = useState(false); // Prevent multiple recalculations
+    const [lastRecalculationTime, setLastRecalculationTime] = useState(0); // Debounce recalculations
+    const [prevHeading, setPrevHeading] = useState(null);
+    const snapPoints = useMemo(() => ['10%', '50%', '90%'], []);
+    const bottomSheetRef = useRef(null);
 
-const [totalDistance, setTotalDistance] = useState(0); // in meters
-const [totalDuration, setTotalDuration] = useState(0); // in seconds
-const [remainingDistance, setRemainingDistance] = useState(0); // in meters
-const [remainingDuration, setRemainingDuration] = useState(0); // in seconds
-const [eta, setEta] = useState(null); // Estimated Time of Arrival
-const [currentRoadName, setCurrentRoadName] = useState('');
+    const [totalDistance, setTotalDistance] = useState(0); // in meters
+    const [totalDuration, setTotalDuration] = useState(0); // in seconds
+    const [remainingDistance, setRemainingDistance] = useState(0); // in meters
+    const [remainingDuration, setRemainingDuration] = useState(0); // in seconds
+    const [eta, setEta] = useState(null); // Estimated Time of Arrival
+    const [currentRoadName, setCurrentRoadName] = useState('');
+    const [congestionSegments, setCongestionSegments] = useState([]);
 
-
-
-
-const recalculateRoute = async (currentPosition) => {
-    try {
-        const originCoordinates = `${currentPosition[0]},${currentPosition[1]}`;
-        const destinationCoordinates = `${destination.longitude},${destination.latitude}`;
-
-        const response = await axios.get(
-            `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${originCoordinates};${destinationCoordinates}`,
-            {
-                params: {
-                    access_token: MAPBOX_API_TOKEN,
-                    steps: true,
-                    geometries: 'geojson',
-                    overview: 'full',
-                    annotations: 'congestion',
-                }
-            }
-        );
-
-        const routeData = response.data.routes[0];
-        setFullRoute(routeData.geometry.coordinates);
-        setInstructions(routeData.legs[0].steps); // Contains detailed steps
-        
-        // Set total distance and duration
-        setTotalDistance(routeData.distance); // in meters
-        setTotalDuration(routeData.duration); // in seconds
-       // Initially, remaining distance and duration are equal to total
-       setRemainingDistance(routeData.distance);
-       setRemainingDuration(routeData.duration);
-   
-
-        // Reset current step index
-        setCurrentStepIndex(0);
-
-        // Set the first instruction
-        if (routeData.legs[0].steps.length > 0) {
-            const firstStep = routeData.legs[0].steps[0];
-            setCurrentInstruction(`${firstStep.maneuver.instruction} onto ${firstStep.name}`);
+    // Congestion color mapping function
+    const getCongestionColor = (congestionValue) => {
+        if (congestionValue === null) {
+            return 'blue'; // Default color for null congestion
+        } else if (congestionValue === 0) {
+            return 'blue'; // No congestion
+        } else if (congestionValue <= 15) {
+            return 'blue'; // Moderate congestion
+        } else if (congestionValue <= 25) {
+            return 'orange'; // High congestion
+        } else {
+            return 'red'; // Very high congestion
         }
+    };
+    const shouldRenderSegment = (congestionValue) => {
+        return congestionValue >= 2; // Only render moderate to heavy traffic
+    };
+    // Check if user is off-route
+    const checkIfOffRoute = (currentPosition, route) => {
+        if (!currentPosition || route.length === 0) return false;
 
-        // Reset isRecalculating after successful recalculation
-        setIsRecalculating(false);
-    } catch (error) {
-        console.error('Error recalculating directions:', error);
-        // Reset isRecalculating even if there is an error to allow future recalculations
-        setIsRecalculating(false);
-    }
-};
+        const userPoint = turf.point(currentPosition);
+        const routeLine = turf.lineString(route);
+        const snapped = turf.nearestPointOnLine(routeLine, userPoint);
+        const distanceFromRoute = turf.distance(userPoint, snapped, { units: 'meters' });
+
+        return distanceFromRoute > 30; // User is off-route if more than 30 meters away
+    };
+
+    
+    useEffect(() => {
+        if (selectedRoute) {
+            // Map the congestion data into segments with colors
+            const segments = selectedRoute.coordinates.map((coord, i) => {
+                if (i === selectedRoute.coordinates.length - 1) return null;
+
+                const congestionValue = selectedRoute.congestionNumeric[i];
+                const [lon1, lat1] = coord;
+                const [lon2, lat2] = selectedRoute.coordinates[i + 1];
+                const congestionColor = getCongestionColor(congestionValue);
+
+                if (!shouldRenderSegment(congestionValue)) return null;
+
+                return {
+                    type: 'Feature',
+                    geometry: {
+                        type: 'LineString',
+                        coordinates: [[lon1, lat1], [lon2, lat2]]
+                    },
+                    properties: {
+                        color: congestionColor
+                    }
+                };
+            }).filter(segment => segment !== null);
+
+            setCongestionSegments(segments);
+        }
+    }, [selectedRoute]);
+
+    const recalculateRoute = async (currentPosition) => {
+        try {
+            const originCoordinates = `${currentPosition[0]},${currentPosition[1]}`;
+            const destinationCoordinates = `${destination.longitude},${destination.latitude}`;
+
+            const response = await axios.get(
+                `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${originCoordinates};${destinationCoordinates}`,
+                {
+                    params: {
+                        access_token: MAPBOX_API_TOKEN,
+                        steps: true,
+                        geometries: 'geojson',
+                        overview: 'full',
+                        annotations: 'congestion',
+                    }
+                }
+            );
+
+            const routeData = response.data.routes[0];
+            setFullRoute(routeData.geometry.coordinates);
+            setInstructions(routeData.legs[0].steps);
+
+            setTotalDistance(routeData.distance);
+            setTotalDuration(routeData.duration);
+            setRemainingDistance(routeData.distance);
+            setRemainingDuration(routeData.duration);
+
+            setCurrentStepIndex(0);
+
+            if (routeData.legs[0].steps.length > 0) {
+                const firstStep = routeData.legs[0].steps[0];
+                setCurrentInstruction(`${firstStep.maneuver.instruction} onto ${firstStep.name}`);
+            }
+
+            setIsRecalculating(false);
+        } catch (error) {
+            console.error('Error recalculating directions:', error);
+            setIsRecalculating(false);
+        }
+    };
 
 
-     // Fetch driving directions from Mapbox API (same as before)
-     const fetchDirections = async () => {
+
+    const fetchDirections = async () => {
         const originCoordinates = `${origin.longitude},${origin.latitude}`;
         const destinationCoordinates = `${destination.longitude},${destination.latitude}`;
 
@@ -136,32 +185,44 @@ const recalculateRoute = async (currentPosition) => {
             setFullRoute(routeData.geometry.coordinates); // Set the full route
             setInstructions(routeData.legs[0].steps); // Contains detailed steps
         
-            // Set the first instruction to be displayed
-            // Set the first instruction to be displayed
-if (routeData.legs[0].steps.length > 0) {
-    const firstStep = routeData.legs[0].steps[0];
-    setCurrentInstruction(`${firstStep.maneuver.instruction} onto ${firstStep.name}`);
-}
-
+            if (routeData.legs[0].steps.length > 0) {
+                const firstStep = routeData.legs[0].steps[0];
+                setCurrentInstruction(`${firstStep.maneuver.instruction} onto ${firstStep.name}`);
+            }
         } catch (error) {
             console.error('Error fetching directions:', error);
         }
     };
 
     
+  
     useEffect(() => {
         fetchDirections();
-
         const backAction = () => {
             setShowExitModal(true);
             return true;
         };
-
         const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
-
         return () => backHandler.remove();
     }, [origin, destination]);
 
+    useEffect(() => {
+        const handleRecalculation = () => {
+            if (fullRoute.length > 0 && currentPosition) {
+                const isOffRoute = checkIfOffRoute(currentPosition, fullRoute);
+                const currentTime = Date.now();
+
+                if (isOffRoute && !isRecalculating && currentTime - lastRecalculationTime > 10000) {
+                    setIsRecalculating(true);
+                    setLastRecalculationTime(currentTime);
+                    recalculateRoute(currentPosition);
+                }
+            }
+        };
+
+        const interval = setInterval(handleRecalculation, 5000); // Check every 5 seconds
+        return () => clearInterval(interval);
+    }, [currentPosition, fullRoute]);
 
     const formatDuration = (durationInSeconds) => {
         const hours = Math.floor(durationInSeconds / 3600);
@@ -253,23 +314,33 @@ if (routeData.legs[0].steps.length > 0) {
                 />
    
    
+   {/* Base Route (blue line) */}
+ 
    {fullRoute.length > 0 && (
-                    <MapboxGL.ShapeSource
-                        id="routeSource"
-                        shape={{
-                            type: 'Feature',
-                            geometry: { type: 'LineString', coordinates: fullRoute },
-                        }}
-                    >
-                        <MapboxGL.LineLayer
-                            id="routeLayer"
-                            style={{ lineColor: 'blue', lineWidth: 10, lineOpacity: 0.5, lineCap: 'round', lineJoin: 'round' }}
-                        />
-                    </MapboxGL.ShapeSource>
-                )}
-
-
-
+                        <MapboxGL.ShapeSource id="routeSource" shape={{ type: 'Feature', geometry: { type: 'LineString', coordinates: fullRoute } }}>
+                            <MapboxGL.LineLayer id="routeLayer" style={{ lineColor: 'blue', lineWidth: 10, lineOpacity: 0.5, lineCap: 'round', lineJoin: 'round' }} />
+                        </MapboxGL.ShapeSource>
+                    )}
+  {/* Congestion Route Segments */}
+  {congestionSegments.length > 0 && (
+                        <MapboxGL.ShapeSource
+                            id="congestionSource"
+                            shape={{
+                                type: 'FeatureCollection',
+                                features: congestionSegments
+                            }}
+                        >
+                            <MapboxGL.LineLayer
+                                id="congestionLayer"
+                                style={{
+                                    lineWidth: 8,
+                                    lineColor: ['get', 'color'],
+                                    lineCap: 'round',
+                                    lineJoin: 'round',
+                                }}
+                            />
+                        </MapboxGL.ShapeSource>
+                    )}
 
              <MapboxGL.UserLocation
       visible={true}

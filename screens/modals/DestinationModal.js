@@ -89,20 +89,17 @@ const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch
    
     const handleGoOrPreview = () => {
         if (!loadingRoutes && !isRouteFetched) {
-            // Fetch the routes if not already fetched
+            // If routes haven't been fetched yet, fetch them
             fetchRoutes();
             fitToMarkers();
-            setIsRouteFetched(true);
+            setIsRouteFetched(true); // Set the flag to true once routes are fetched
         } else if (isRouteFetched) {
+            // Fetch the user's current location
             getCurrentLocation((location) => {
-                if (!location) {
-                    // Handle case when location is not available (permissions issue, etc.)
-                    console.error('Failed to get current location.');
-                    return;
-                }
-    
+                
                 setUserLocation(location);
     
+                // Calculate the distance between user's location and the origin
                 const distanceToOrigin = calculateDistance(
                     location.latitude,
                     location.longitude,
@@ -110,18 +107,18 @@ const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch
                     origin.longitude
                 );
     
-                // Check if the user is far from the origin to enter preview mode
+                // If user is far from the origin, enter preview mode
                 if (distanceToOrigin > previewDistanceThreshold) {
                     setIsPreviewMode(true);
                     navigation.navigate('PreviewMapScreen', {
                         origin,
                         destination,
-                        route: routes[selectedRouteIndex],  // Pass the selected route
+                        route: routes[selectedRouteIndex],  // Pass the selected route for preview
                     });
                 } else {
-                    // If close to origin, start real-time navigation
+                    // Start real-time navigation
                     startNavigation();
-                    toggleModal();  // Close modal
+                    toggleModal();  // Close the modal
                 }
             }, (error) => {
                 // Add error handling for getCurrentLocation, such as location permissions issues
@@ -168,16 +165,15 @@ const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch
             setRoutes(mapboxRoutes);
             if (mapboxRoutes.length > 0) {
                 setSelectedRouteIndex(0);
+                setIsRouteFetched(true);  // Mark routes as fetched
             }
         } catch (error) {
             console.error('Error fetching routes:', error.message);
-            // Consider showing a user-friendly error message or alert
         } finally {
             setLoadingRoutes(false);
         }
     };
     
-
 
     // Helper function to format duration (seconds) to hours and minutes
 const formatDuration = (durationInSeconds) => {
@@ -258,30 +254,23 @@ const formatDuration = (durationInSeconds) => {
     };
      
     const startNavigation = () => {
-        // Ensure valid index
-        if (selectedRouteIndex < 0 || selectedRouteIndex >= routes.length) {
-            return;
-        }
-        
-        const selectedRoute = routes[selectedRouteIndex];
-        if (!selectedRoute) {
-            return;
-        }
+        if (selectedRouteIndex < 0 || selectedRouteIndex >= routes.length) return;
     
-        // Extract the destination name
+        const selectedRoute = routes[selectedRouteIndex];
+        if (!selectedRoute) return;
+    
         const destinationName = destination.description.split(',')[0];
-        console.log('Destination Name:', destinationName);
-
-        // Pass necessary data for navigation
+    
         navigation.navigate('NavigationScreen', {
             origin,
             destination,
             route: selectedRoute,
             congestionDistance: selectedRoute.congestionDistance || 0,
             etaTime: selectedRoute.etaTime || 0,
-            destinationName
+            destinationName,
         });
     };
+    
     
 
     
@@ -558,10 +547,11 @@ useEffect(() => {
             </View>
 
             <TouchableOpacity onPress={handleGoOrPreview} style={styles.viewRoutesButton}>
-                <Text style={styles.viewRoutesText}>
-                    {isPreviewMode ? 'Preview Route' : (isRouteFetched ? 'Go Now' : 'View Routes')}
-                </Text>
-            </TouchableOpacity>
+    <Text style={styles.viewRoutesText}>
+        {isPreviewMode ? 'Preview Route' : (isRouteFetched ? 'Go Now' : 'View Routes')}
+    </Text>
+</TouchableOpacity>
+
 
         </>
     )}

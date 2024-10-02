@@ -117,23 +117,26 @@ const NavigationScreen = ({ route, navigation }) => {
     useEffect(() => {
         console.log('Stop data:', stop); // Check if stop data is received
       }, [stop]);
-    // Congestion color mapping function
-    const getCongestionColor = (congestionValue) => {
-        if (congestionValue === null) {
-            return 'blue'; // Default color for null congestion
-        } else if (congestionValue === 0) {
-            return 'blue'; // No congestion
-        } else if (congestionValue <= 15) {
-            return 'blue'; // Moderate congestion
-        } else if (congestionValue <= 25) {
-            return 'orange'; // High congestion
-        } else {
-            return 'red'; // Very high congestion
-        }
-    };
-    const shouldRenderSegment = (congestionValue) => {
-        return congestionValue >= 2; // Only render moderate to heavy traffic
-    };
+  // Function to get the color based on the congestion level
+const getCongestionColor = (congestionValue) => {
+    if (congestionValue === null) {
+        return 'blue'; // Default color for null congestion
+    } else if (congestionValue === 0) {
+        return 'blue'; // No congestion
+    } else if (congestionValue <= 15) {
+        return 'blue'; // Moderate congestion
+    } else if (congestionValue <= 25) {
+        return 'orange'; // High congestion
+    } else {
+        return 'red'; // Very high congestion
+    }
+};
+
+// Function to check if a segment should be rendered based on congestion value
+const shouldRenderSegment = (congestionValue) => {
+    return congestionValue >= 2; // Only render moderate to heavy traffic
+};
+
     // Check if user is off-route
     const checkIfOffRoute = (currentPosition, route) => {
         if (!currentPosition || route.length === 0) return false;
@@ -176,18 +179,8 @@ const NavigationScreen = ({ route, navigation }) => {
         }
     }, [selectedRoute]);
 
-
-    const splitCoordinates = (coordinates, maxPerRequest) => {
-        const chunks = [];
-        for (let i = 0; i < coordinates.length; i += maxPerRequest - 1) {
-            const chunk = coordinates.slice(i, i + maxPerRequest);
-            if (chunk.length > 1) {
-                chunks.push(chunk);
-            }
-        }
-        return chunks;
-    };
     
+
 
     const recalculateRoute = async (currentPosition) => {
         try {
@@ -202,7 +195,7 @@ const NavigationScreen = ({ route, navigation }) => {
                         steps: true,
                         geometries: 'geojson',
                         overview: 'full',
-                        annotations: 'congestion',
+                        annotations: 'congestion_numeric',
                     }
                 }
             );
@@ -249,24 +242,58 @@ const NavigationScreen = ({ route, navigation }) => {
                         steps: true,
                         geometries: 'geojson',
                         overview: 'full',
-                        annotations: 'congestion',
+                        annotations: 'congestion_numeric',  // Use congestion numeric annotations
                     }
                 }
             );
     
             const routeData = response.data.routes[0];
             setFullRoute(routeData.geometry.coordinates); // Update the route with the stop
-            setInstructions(routeData.legs[0].steps); // Set detailed steps
+            setInstructions(routeData.legs.flatMap(leg => leg.steps)); // Merge steps from all legs (origin, stop, and destination)
             const etaTime = calculateETA(routeData.duration); // Calculate ETA using new function
             setEta(etaTime);
-            setCurrentRoadName(routeData.legs[0].summary); // Update road name
+            setCurrentRoadName(routeData.legs[0].summary); // Update road name from the first leg
     
-            // Save the data
-            saveRouteToStorage(routeData, routeData.legs[0].steps, etaTime, routeData.legs[0].summary);
+            // Process congestion for multiple legs
+            const congestionNumeric = routeData.legs.flatMap(leg => leg.annotation?.congestion_numeric || []);
+    
+            // Log the congestion numeric annotations for validation
+           // console.log('Congestion Numeric:', congestionNumeric);
+    
+            // Clear any congestion segments and recompute based on the new route
+            const segments = routeData.geometry.coordinates.map((coord, i) => {
+                if (i === routeData.geometry.coordinates.length - 1) return null;
+    
+                // If numeric congestion data is missing, skip processing
+                const congestionValue = congestionNumeric[i] || null; // Use null if congestion is missing
+                const [lon1, lat1] = coord;
+                const [lon2, lat2] = routeData.geometry.coordinates[i + 1];
+                const congestionColor = getCongestionColor(congestionValue);  // Use numeric value to determine the color
+    
+                if (!shouldRenderSegment(congestionValue)) return null;
+    
+                return {
+                    type: 'Feature',
+                    geometry: {
+                        type: 'LineString',
+                        coordinates: [[lon1, lat1], [lon2, lat2]]
+                    },
+                    properties: {
+                        color: congestionColor
+                    }
+                };
+            }).filter(segment => segment !== null);
+    
+            setCongestionSegments(segments); // Set congestion segments for rendering
+    
+            // Save the data (optional, depending on your implementation)
+            saveRouteToStorage(routeData, routeData.legs.flatMap(leg => leg.steps), etaTime, routeData.legs[0].summary);
         } catch (error) {
             console.error('Error fetching directions:', error);
         }
     };
+    
+    
     
     
     
@@ -309,14 +336,15 @@ const NavigationScreen = ({ route, navigation }) => {
     useEffect(() => {
         if (origin && destination) {
             // Clear any existing route fragments
-            setFullRoute([]);
-            setTraversedRoute([]);
+            setFullRoute([]); 
+            setTraversedRoute([]); 
             setNonTraversedRoute([]);
-    
-            // Fetch the new route
+            setCongestionSegments([]); // Clear congestion segments
+            
+            // Fetch the new route including the stop
             fetchDirections(stop);
         }
-    }, [origin, destination, stop]);  // Ensure the stop triggers a new fetch
+    }, [origin, destination, stop]); // Ensure the stop triggers a new fetch
     
 
     useEffect(() => {

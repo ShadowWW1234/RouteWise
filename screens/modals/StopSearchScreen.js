@@ -1,31 +1,43 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, TextInput, FlatList, Text, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
 import axios from 'axios';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import {MAPBOX_API_TOKEN} from '@env'
-
+import { MAPBOX_API_TOKEN } from '@env';
+import { debounce } from 'lodash';
 
 const StopSearchScreen = ({ route, navigation }) => {
     const { origin, destination, currentRoute } = route.params;
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState([]);
 
-    const handleSearch = async (query) => {
-        setSearchQuery(query);
-        try {
-            const response = await axios.get(
-                `https://api.mapbox.com/geocoding/v5/mapbox.places/${query}.json`,
-                {
-                    params: {
-                        access_token: MAPBOX_API_TOKEN,
-                        autocomplete:true,
-                        country:'PH'
+    // Debounced search handler to avoid excessive API requests
+    const debouncedHandleSearch = useCallback(
+        debounce(async (query) => {
+            try {
+                const response = await axios.get(
+                    `https://api.mapbox.com/geocoding/v5/mapbox.places/${query}.json`,
+                    {
+                        params: {
+                            access_token: MAPBOX_API_TOKEN,
+                            autocomplete: true,
+                            country: 'PH',
+                        },
                     }
-                }
-            );
-            setSearchResults(response.data.features);
-        } catch (error) {
-            console.error('Error fetching search results:', error);
+                );
+                setSearchResults(response.data.features);
+            } catch (error) {
+                console.error('Error fetching search results:', error);
+            }
+        }, 300), // 300ms debounce
+        []
+    );
+
+    const handleSearch = (query) => {
+        setSearchQuery(query);
+        if (query.length > 2) {
+            debouncedHandleSearch(query); // Only search if query length is greater than 2
+        } else {
+            setSearchResults([]); // Clear results if query is too short
         }
     };
 
@@ -33,23 +45,22 @@ const StopSearchScreen = ({ route, navigation }) => {
         if (item.geometry && item.geometry.coordinates) {
             const [longitude, latitude] = item.geometry.coordinates;
             console.log('Selected Stop:', { longitude, latitude });  // Log stop before navigating
-            navigation.navigate('NavigationScreen', { 
-                origin, 
-                destination, 
-                stop: { longitude, latitude } // Ensure stop is passed correctly
+            navigation.navigate('NavigationScreen', {
+                origin,
+                destination,
+                stop: { longitude, latitude }, // Ensure stop is passed correctly
             });
         }
     };
-    
-    
+
     return (
         <SafeAreaView style={styles.container}>
             <View style={styles.searchContainer}>
                 <Ionicons name="search" size={24} color="gray" />
-                <TextInput 
-                    value={searchQuery} 
-                    onChangeText={handleSearch} 
-                    placeholder="Search for a stop" 
+                <TextInput
+                    value={searchQuery}
+                    onChangeText={handleSearch}
+                    placeholder="Search for a stop"
                     style={styles.input}
                     placeholderTextColor="gray"
                 />

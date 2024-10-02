@@ -11,6 +11,7 @@ import SearchScreen from './screens/SearchScreen';
 import RouteDetailsScreen from './screens/RouteDetailsScreen';
 import NavigationScreen from './screens/NavigationScreen';
 import StopSearchScreen from './screens/modals/StopSearchScreen';
+import PreviewMapScreen from './screens/PreviewMapScreen'
 // Create Stack Navigator
 const Stack = createNativeStackNavigator();
 
@@ -90,6 +91,11 @@ const App = () => {
               name="StopSearchScreen"
               component={StopSearchScreen}
               options={{ headerShown: true,title:'Add stop',  headerTitleAlign: 'center' }}
+            />
+             <Stack.Screen
+              name="PreviewMapScreen"
+              component={PreviewMapScreen}
+              options={{ headerShown: true,title:'Preview',  headerTitleAlign: 'center' }}
             />
             
           </Stack.Navigator>

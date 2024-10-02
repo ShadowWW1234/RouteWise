@@ -1,11 +1,39 @@
 import React, { useRef, useState, useEffect, useContext } from 'react';
-import { StyleSheet, View, Modal, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, Modal, Text, TouchableOpacity, ActivityIndicator, PermissionsAndroid, Platform } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MapboxGL from '@rnmapbox/maps';
 import { useDispatch } from 'react-redux'; 
 import { MapStyleContext } from '../context/MapStyleContext';
 import { useNavigation } from "@react-navigation/native";
 import {  MAPBOX_API_TOKEN } from '@env';
+import Geolocation from '@react-native-community/geolocation';
+
+
+// Function to get the user's current location
+const getCurrentLocation = (callback) => {
+    if (Platform.OS === 'android') {
+        PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION)
+        .then(granted => {
+            if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+                Geolocation.getCurrentPosition(
+                    (position) => {
+                        callback(position.coords);  // Pass current location
+                    },
+                    (error) => console.log('Error getting location:', error),
+                    { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+                );
+            }
+        });
+    } else {
+        Geolocation.getCurrentPosition(
+            (position) => {
+                callback(position.coords);  // Pass current location
+            },
+            (error) => console.log('Error getting location:', error),
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+        );
+    }
+};
 
 const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch}) => {
     const dispatch = useDispatch();
@@ -16,8 +44,12 @@ const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch
     const [loadingRoutes, setLoadingRoutes] = useState(false);
     const [distance, setDistance] = useState(null);
     const [isRouteFetched, setIsRouteFetched] = useState(false);
-     const { mapStyle } = useContext(MapStyleContext);
-    
+    const { mapStyle } = useContext(MapStyleContext);
+    const [isPreviewMode, setIsPreviewMode] = useState(false); // New state for preview mode
+    const [userLocation, setUserLocation] = useState(null); // State to store user's current location
+    const previewDistanceThreshold = 1; // Set a threshold (in km) to switch to preview mode
+
+
       const navigation = useNavigation();
 
     
@@ -28,13 +60,78 @@ const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch
         setSelectedRouteIndex(0);
 
     };
+    useEffect(() => {
+        Geolocation.getCurrentPosition(
+            (position) => {
+                setUserLocation({
+                    latitude: position.coords.latitude,
+                    longitude: position.coords.longitude,
+                });
+            },
+            (error) => console.error(error),
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+        );
+    }, []);
+    
+    useEffect(() => {
+        if (userLocation && origin) {
+            const distanceToOrigin = calculateDistance(
+                userLocation.latitude,
+                userLocation.longitude,
+                origin.latitude,
+                origin.longitude
+            );
+    
+            // Switch to preview mode if the distance is greater than the threshold
+            setIsPreviewMode(distanceToOrigin > previewDistanceThreshold);
+        }
+    }, [userLocation, origin]);
+   
+    const handleGoOrPreview = () => {
+        if (!loadingRoutes && !isRouteFetched) {
+            // Fetch the routes if not already fetched
+            fetchRoutes();
+            fitToMarkers();
+            setIsRouteFetched(true);
+        } else if (isRouteFetched) {
+            getCurrentLocation((location) => {
+                if (!location) {
+                    // Handle case when location is not available (permissions issue, etc.)
+                    console.error('Failed to get current location.');
+                    return;
+                }
+    
+                setUserLocation(location);
+    
+                const distanceToOrigin = calculateDistance(
+                    location.latitude,
+                    location.longitude,
+                    origin.latitude,
+                    origin.longitude
+                );
+    
+                // Check if the user is far from the origin to enter preview mode
+                if (distanceToOrigin > previewDistanceThreshold) {
+                    setIsPreviewMode(true);
+                    navigation.navigate('PreviewMapScreen', {
+                        origin,
+                        destination,
+                        route: routes[selectedRouteIndex],  // Pass the selected route
+                    });
+                } else {
+                    // If close to origin, start real-time navigation
+                    startNavigation();
+                    toggleModal();  // Close modal
+                }
+            }, (error) => {
+                // Add error handling for getCurrentLocation, such as location permissions issues
+                console.error('Error getting user location:', error);
+            });
+        }
+    };
+    
 
-    // const handleCloseModal = () => {
-    //     resetState();
-    //     toggleModal();
-    //     resetSearch();
-    // };
- 
+    
 
     const handleCloseModal = () => {
         resetState();  // Reset local state in DestinationModal
@@ -45,6 +142,7 @@ const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch
         }
         toggleModal();  // Close the modal
     };
+   
     const fetchRoutes = async () => {
         if (!origin || !destination) return;
     
@@ -55,12 +153,16 @@ const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch
                 `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}?alternatives=true&annotations=closure%2Cmaxspeed%2Ccongestion_numeric%2Ccongestion%2Cspeed%2Cdistance%2Cduration&exclude=ferry%2Cunpaved&geometries=geojson&language=en&overview=full&roundabout_exits=true&steps=true&access_token=${MAPBOX_API_TOKEN}`
             );
     
+            if (!response.ok) {
+                throw new Error(`Error: ${response.status} ${response.statusText}`);
+            }
+    
             const data = await response.json();
             const mapboxRoutes = data.routes.map(route => ({
                 coordinates: route.geometry.coordinates,
-                congestionNumeric: route.legs[0].annotation.congestion_numeric,
-                steps: route.legs[0].steps, // Add steps for turn-by-turn navigation
-                duration: route.duration, // Extract duration (in seconds)
+                congestionNumeric: route.legs[0]?.annotation?.congestion_numeric || [], // Default to an empty array if missing
+                steps: route.legs[0]?.steps || [],  // Ensure steps exist
+                duration: route.duration, // Duration in seconds
             }));
     
             setRoutes(mapboxRoutes);
@@ -68,11 +170,15 @@ const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch
                 setSelectedRouteIndex(0);
             }
         } catch (error) {
-            console.error('Error fetching routes:', error);
+            console.error('Error fetching routes:', error.message);
+            // Consider showing a user-friendly error message or alert
         } finally {
             setLoadingRoutes(false);
         }
     };
+    
+
+
     // Helper function to format duration (seconds) to hours and minutes
 const formatDuration = (durationInSeconds) => {
     const hours = Math.floor(durationInSeconds / 3600);
@@ -250,19 +356,7 @@ useEffect(() => {
     }
 }, [routes, selectedRouteIndex]);
 
-const handleGoNow = () => {
-    if (!loadingRoutes && !isRouteFetched) {
-        // If routes haven't been fetched yet, fetch them
-        fetchRoutes();
-        fitToMarkers();
-        setIsRouteFetched(true); // Set the flag to true once routes are fetched
-    } else if (isRouteFetched) {
-        // If routes are already fetched, trigger navigation
-        startNavigation(); // Start turn-by-turn navigation
-        toggleModal(); // Close the DestinationModal
-    }
-};
-
+ 
 
 
     const getCongestionColor = (congestionValue) => {
@@ -326,20 +420,19 @@ const handleGoNow = () => {
                         animationDuration={1000}
                     />
     
-                   {/* Add PointAnnotation for the origin */}
-                   {origin && (
-                            <MapboxGL.PointAnnotation
-                            
-                                id="origin"
-                                coordinate={[origin.longitude, origin.latitude]}
-                            >
-                                <MapboxGL.Callout title="Origin" />
-                            </MapboxGL.PointAnnotation>
-                        )}
-                    <MapboxGL.PointAnnotation
-                        id="destination"
-                        coordinate={[destination.longitude, destination.latitude]}
-                    />
+               {/* Add PointAnnotation for the origin */}
+    {origin && (
+        <MapboxGL.PointAnnotation
+            id="origin"
+            coordinate={[origin.longitude, origin.latitude]}
+        >
+            <MapboxGL.Callout title="Origin" />
+        </MapboxGL.PointAnnotation>
+    )}
+    <MapboxGL.PointAnnotation
+        id="destination"
+        coordinate={[destination.longitude, destination.latitude]}
+    />
     
                
     {routes.length > 0 && routes.map((routeData, index) => {
@@ -464,11 +557,12 @@ const handleGoNow = () => {
                 </Text>
             </View>
 
-            <TouchableOpacity onPress={handleGoNow} style={styles.viewRoutesButton}>
+            <TouchableOpacity onPress={handleGoOrPreview} style={styles.viewRoutesButton}>
                 <Text style={styles.viewRoutesText}>
-                    {isRouteFetched ? 'Go Now' : 'View Routes'}
+                    {isPreviewMode ? 'Preview Route' : (isRouteFetched ? 'Go Now' : 'View Routes')}
                 </Text>
             </TouchableOpacity>
+
         </>
     )}
 </View>

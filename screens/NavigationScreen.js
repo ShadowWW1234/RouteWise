@@ -12,6 +12,7 @@ import { MAPBOX_API_TOKEN } from '@env';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+
 MapboxGL.setAccessToken(MAPBOX_API_TOKEN);
 
 // Helper function to map instructions to Ionicons
@@ -25,6 +26,7 @@ const getManeuverIcon = (instruction) => {
     }
     return "navigate-outline"; // Default icon
 };
+
 const saveRouteToStorage = async (routeData, instructions, eta, currentRoadName) => {
     try {
         const routeDataString = JSON.stringify(routeData);
@@ -39,7 +41,6 @@ const saveRouteToStorage = async (routeData, instructions, eta, currentRoadName)
         console.error('Error saving route data to storage:', error);
     }
 };
-
 
 const loadRouteFromStorage = async () => {
     try {
@@ -77,8 +78,9 @@ const loadRouteFromStorage = async () => {
 };
 
 const NavigationScreen = ({ route, navigation }) => {
- 
-    const { origin, destination, stop = null, route: selectedRoute, destinationName } = route.params || {};
+
+    const { origin, destination, stops: initialStops = [], route: selectedRoute, destinationName } = route.params || {};
+    const [stops, setStops] = useState(initialStops);
     const [currentPosition, setCurrentPosition] = useState(null);
     const [traversedRoute, setTraversedRoute] = useState([]);
     const [nonTraversedRoute, setNonTraversedRoute] = useState([]);
@@ -112,30 +114,33 @@ const NavigationScreen = ({ route, navigation }) => {
     const [currentRoadName, setCurrentRoadName] = useState('');
     const [congestionSegments, setCongestionSegments] = useState([]);
     const [appState, setAppState] = useState(AppState.currentState);
-    
-    
-    useEffect(() => {
-        console.log('Stop data:', stop); // Check if stop data is received
-      }, [stop]);
-  // Function to get the color based on the congestion level
-const getCongestionColor = (congestionValue) => {
-    if (congestionValue === null) {
-        return 'blue'; // Default color for null congestion
-    } else if (congestionValue === 0) {
-        return 'blue'; // No congestion
-    } else if (congestionValue <= 15) {
-        return 'blue'; // Moderate congestion
-    } else if (congestionValue <= 25) {
-        return 'orange'; // High congestion
-    } else {
-        return 'red'; // Very high congestion
-    }
-};
 
-// Function to check if a segment should be rendered based on congestion value
-const shouldRenderSegment = (congestionValue) => {
-    return congestionValue >= 2; // Only render moderate to heavy traffic
-};
+    useEffect(() => {
+        if (route.params?.newStop) {
+            setStops(prevStops => [...prevStops, route.params.newStop]);
+            navigation.setParams({ newStop: undefined });
+        }
+    }, [route.params?.newStop]);
+
+    // Function to get the color based on the congestion level
+    const getCongestionColor = (congestionValue) => {
+        if (congestionValue === null) {
+            return 'blue'; // Default color for null congestion
+        } else if (congestionValue === 0) {
+            return 'blue'; // No congestion
+        } else if (congestionValue <= 15) {
+            return 'blue'; // Moderate congestion
+        } else if (congestionValue <= 25) {
+            return 'orange'; // High congestion
+        } else {
+            return 'red'; // Very high congestion
+        }
+    };
+
+    // Function to check if a segment should be rendered based on congestion value
+    const shouldRenderSegment = (congestionValue) => {
+        return congestionValue >= 2; // Only render moderate to heavy traffic
+    };
 
     // Check if user is off-route
     const checkIfOffRoute = (currentPosition, route) => {
@@ -149,20 +154,19 @@ const shouldRenderSegment = (congestionValue) => {
         return distanceFromRoute > 30; // User is off-route if more than 30 meters away
     };
 
-    
     useEffect(() => {
         if (selectedRoute) {
             // Map the congestion data into segments with colors
             const segments = selectedRoute.coordinates.map((coord, i) => {
                 if (i === selectedRoute.coordinates.length - 1) return null;
-    
+
                 const congestionValue = selectedRoute.congestionNumeric[i]; // Get the congestion value
                 const [lon1, lat1] = coord;
                 const [lon2, lat2] = selectedRoute.coordinates[i + 1];
                 const congestionColor = getCongestionColor(congestionValue); // Get the color based on congestion value
-    
+
                 if (!shouldRenderSegment(congestionValue)) return null;
-    
+
                 return {
                     type: 'Feature',
                     geometry: {
@@ -174,138 +178,184 @@ const shouldRenderSegment = (congestionValue) => {
                     }
                 };
             }).filter(segment => segment !== null);
-    
+
             setCongestionSegments(segments);
         }
     }, [selectedRoute]);
-
-    
-
 
     const recalculateRoute = async (currentPosition) => {
         try {
             const originCoordinates = `${currentPosition[0]},${currentPosition[1]}`;
             const destinationCoordinates = `${destination.longitude},${destination.latitude}`;
-    
+            const coordinatesArray = [originCoordinates, ...stops.map(stop => `${stop.longitude},${stop.latitude}`), destinationCoordinates];
+            const coordinatesString = coordinatesArray.join(';');
+
+            // Choose the profile based on the number of waypoints
+            const profile = stops.length > 1 ? 'driving' : 'driving-traffic';
+
             const response = await axios.get(
-                `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${originCoordinates};${destinationCoordinates}`,
+                `https://api.mapbox.com/directions/v5/mapbox/${profile}/${coordinatesString}`,
                 {
                     params: {
                         access_token: MAPBOX_API_TOKEN,
                         steps: true,
                         geometries: 'geojson',
                         overview: 'full',
-                        annotations: 'congestion_numeric',
+                        // Only request congestion data if using 'driving-traffic'
+                        ...(profile === 'driving-traffic' && { annotations: 'congestion_numeric' }),
                     }
                 }
             );
-    
+
             const routeData = response.data.routes[0];
             setFullRoute(routeData.geometry.coordinates);
-            setInstructions(routeData.legs[0].steps);
-    
+            setInstructions(routeData.legs.flatMap(leg => leg.steps));
+
             setTotalDistance(routeData.distance);
             setTotalDuration(routeData.duration);
             setRemainingDistance(routeData.distance);
             setRemainingDuration(routeData.duration);
-    
+
             setCurrentStepIndex(0);
-    
+
             if (routeData.legs[0].steps.length > 0) {
                 const firstStep = routeData.legs[0].steps[0];
                 setCurrentInstruction(`${firstStep.maneuver.instruction} onto ${firstStep.name}`);
             }
-    
+
+            if (profile === 'driving-traffic') {
+                // Process congestion data
+                const congestionNumeric = routeData.legs.flatMap(leg => leg.annotation?.congestion_numeric || []);
+
+                // Clear any congestion segments and recompute based on the new route
+                const segments = routeData.geometry.coordinates.map((coord, i) => {
+                    if (i === routeData.geometry.coordinates.length - 1) return null;
+
+                    // If numeric congestion data is missing, skip processing
+                    const congestionValue = congestionNumeric[i] || null; // Use null if congestion is missing
+                    const [lon1, lat1] = coord;
+                    const [lon2, lat2] = routeData.geometry.coordinates[i + 1];
+                    const congestionColor = getCongestionColor(congestionValue);  // Use numeric value to determine the color
+
+                    if (!shouldRenderSegment(congestionValue)) return null;
+
+                    return {
+                        type: 'Feature',
+                        geometry: {
+                            type: 'LineString',
+                            coordinates: [[lon1, lat1], [lon2, lat2]]
+                        },
+                        properties: {
+                            color: congestionColor
+                        }
+                    };
+                }).filter(segment => segment !== null);
+
+                setCongestionSegments(segments); // Set congestion segments for rendering
+            } else {
+                // Clear congestion segments if congestion data is not available
+                setCongestionSegments([]);
+            }
+
             setIsRecalculating(false);
         } catch (error) {
             console.error('Error recalculating directions:', error);
             setIsRecalculating(false);
         }
     };
-    
+
     const fetchDirections = async () => {
         if (!origin || !destination) {
             console.error('Warning: Origin or destination is missing!');
             return;
         }
-    
+
         const originCoordinates = `${origin.longitude},${origin.latitude}`;
-        const stopCoordinates = stop ? `${stop.longitude},${stop.latitude};` : '';
         const destinationCoordinates = `${destination.longitude},${destination.latitude}`;
-    
+        const coordinatesArray = [originCoordinates, ...stops.map(stop => `${stop.longitude},${stop.latitude}`), destinationCoordinates];
+        const coordinatesString = coordinatesArray.join(';');
+
+        // Choose the profile based on the number of waypoints
+        const profile = stops.length > 1 ? 'driving' : 'driving-traffic';
+
         try {
             const response = await axios.get(
-                `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${originCoordinates};${stopCoordinates}${destinationCoordinates}`,
+                `https://api.mapbox.com/directions/v5/mapbox/${profile}/${coordinatesString}`,
                 {
                     params: {
                         access_token: MAPBOX_API_TOKEN,
                         steps: true,
                         geometries: 'geojson',
                         overview: 'full',
-                        annotations: 'congestion_numeric',  // Use congestion numeric annotations
+                        // Only request congestion data if using 'driving-traffic'
+                        ...(profile === 'driving-traffic' && { annotations: 'congestion_numeric' }),
                     }
                 }
             );
-    
+
             const routeData = response.data.routes[0];
-            setFullRoute(routeData.geometry.coordinates); // Update the route with the stop
-            setInstructions(routeData.legs.flatMap(leg => leg.steps)); // Merge steps from all legs (origin, stop, and destination)
+            setFullRoute(routeData.geometry.coordinates); // Update the route with the stops
+            setInstructions(routeData.legs.flatMap(leg => leg.steps)); // Merge steps from all legs
             const etaTime = calculateETA(routeData.duration); // Calculate ETA using new function
             setEta(etaTime);
             setCurrentRoadName(routeData.legs[0].summary); // Update road name from the first leg
-    
-            // Process congestion for multiple legs
-            const congestionNumeric = routeData.legs.flatMap(leg => leg.annotation?.congestion_numeric || []);
-    
-            // Log the congestion numeric annotations for validation
-           // console.log('Congestion Numeric:', congestionNumeric);
-    
-            // Clear any congestion segments and recompute based on the new route
-            const segments = routeData.geometry.coordinates.map((coord, i) => {
-                if (i === routeData.geometry.coordinates.length - 1) return null;
-    
-                // If numeric congestion data is missing, skip processing
-                const congestionValue = congestionNumeric[i] || null; // Use null if congestion is missing
-                const [lon1, lat1] = coord;
-                const [lon2, lat2] = routeData.geometry.coordinates[i + 1];
-                const congestionColor = getCongestionColor(congestionValue);  // Use numeric value to determine the color
-    
-                if (!shouldRenderSegment(congestionValue)) return null;
-    
-                return {
-                    type: 'Feature',
-                    geometry: {
-                        type: 'LineString',
-                        coordinates: [[lon1, lat1], [lon2, lat2]]
-                    },
-                    properties: {
-                        color: congestionColor
-                    }
-                };
-            }).filter(segment => segment !== null);
-    
-            setCongestionSegments(segments); // Set congestion segments for rendering
-    
+
+            // Update total distance and duration
+            setTotalDistance(routeData.distance);
+            setTotalDuration(routeData.duration);
+            setRemainingDistance(routeData.distance);
+            setRemainingDuration(routeData.duration);
+
+            if (profile === 'driving-traffic') {
+                // Process congestion data
+                const congestionNumeric = routeData.legs.flatMap(leg => leg.annotation?.congestion_numeric || []);
+
+                // Clear any congestion segments and recompute based on the new route
+                const segments = routeData.geometry.coordinates.map((coord, i) => {
+                    if (i === routeData.geometry.coordinates.length - 1) return null;
+
+                    // If numeric congestion data is missing, skip processing
+                    const congestionValue = congestionNumeric[i] || null; // Use null if congestion is missing
+                    const [lon1, lat1] = coord;
+                    const [lon2, lat2] = routeData.geometry.coordinates[i + 1];
+                    const congestionColor = getCongestionColor(congestionValue);  // Use numeric value to determine the color
+
+                    if (!shouldRenderSegment(congestionValue)) return null;
+
+                    return {
+                        type: 'Feature',
+                        geometry: {
+                            type: 'LineString',
+                            coordinates: [[lon1, lat1], [lon2, lat2]]
+                        },
+                        properties: {
+                            color: congestionColor
+                        }
+                    };
+                }).filter(segment => segment !== null);
+
+                setCongestionSegments(segments); // Set congestion segments for rendering
+            } else {
+                // Clear congestion segments if congestion data is not available
+                setCongestionSegments([]);
+            }
+
             // Save the data (optional, depending on your implementation)
             saveRouteToStorage(routeData, routeData.legs.flatMap(leg => leg.steps), etaTime, routeData.legs[0].summary);
         } catch (error) {
             console.error('Error fetching directions:', error);
         }
     };
-    
-    
-    
-    
-    
+
     useEffect(() => {
         const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
             if (appState.match(/inactive|background/) && nextAppState === 'active') {
-                // Recalculate the route with the stop when app comes to the foreground
+                // Recalculate the route with the stops when app comes to the foreground
                 loadRouteFromStorage(); // Restore saved route data
             }
             setAppState(nextAppState);
         });
-    
+
         return () => {
             appStateSubscription.remove();
         };
@@ -316,52 +366,30 @@ const shouldRenderSegment = (congestionValue) => {
         const eta = new Date(currentTime.getTime() + durationInSeconds * 1000);
         return eta;
     };
-    
-    
 
     useEffect(() => {
-        const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
-            if (appState.match(/inactive|background/) && nextAppState === 'active') {
-                // Recalculate the route with the stop when app comes to the foreground
-                fetchDirections(route.params?.stop);
-            }
-            setAppState(nextAppState);
-        });
-    
-        return () => {
-            appStateSubscription.remove();
-        };
-    }, [appState, route.params?.stop]);
-    
-    useEffect(() => {
+
+        
         if (origin && destination) {
             // Clear any existing route fragments
-            setFullRoute([]); 
-            setTraversedRoute([]); 
+            setFullRoute([]);
+            setTraversedRoute([]);
             setNonTraversedRoute([]);
-            setCongestionSegments([]); // Clear congestion segments
-            
-            // Fetch the new route including the stop
-            fetchDirections(stop);
-        }
-    }, [origin, destination, stop]); // Ensure the stop triggers a new fetch
-    
+            setCongestionSegments([]);
 
-    useEffect(() => {
-        console.log('Fetching directions with stop:', stop);
-        fetchDirections(stop); // Include stop in the recalculation
-    }, [origin, destination, stop]);
-    
+            // Fetch the new route including the stops
+            fetchDirections();
+        }
+    }, [origin, destination, stops]); // Ensure the stops trigger a new fetch
 
     const handleAddStop = () => {
         navigation.navigate('StopSearchScreen', {
             origin,
             destination,
-            currentRoute: fullRoute,  // Pass the current route to the StopSearchScreen
+            stops,
         });
     };
-    
-  
+
     useEffect(() => {
         fetchDirections();
         const backAction = () => {
@@ -370,7 +398,7 @@ const shouldRenderSegment = (congestionValue) => {
         };
         const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
         return () => backHandler.remove();
-    }, [origin, destination]);
+    }, [origin, destination, stops]);
 
     useEffect(() => {
         const handleRecalculation = () => {
@@ -388,19 +416,19 @@ const shouldRenderSegment = (congestionValue) => {
 
         const interval = setInterval(handleRecalculation, 5000); // Check every 5 seconds
         return () => clearInterval(interval);
-    }, [currentPosition, fullRoute]);
+    }, [currentPosition, fullRoute, isRecalculating, lastRecalculationTime]);
 
     const formatDuration = (durationInSeconds) => {
         const hours = Math.floor(durationInSeconds / 3600);
         const minutes = Math.ceil((durationInSeconds % 3600) / 60);
-    
+
         if (hours > 0) {
             return `${hours} hr ${minutes} min`;
         } else {
             return `${minutes} min`;
         }
     };
-    
+
     const formatTime = (date) => {
         if (!date) return '';
         const hours = date.getHours();
@@ -410,9 +438,7 @@ const shouldRenderSegment = (congestionValue) => {
         const minutesStr = minutes < 10 ? '0' + minutes : minutes;
         return `${hours12}:${minutesStr} ${ampm}`;
     };
-    
 
-  
     const toggleDropdown = () => {
         const targetHeight = isDropdownOpen ? 0 : 200;
         Animated.timing(dropdownHeight, {
@@ -446,8 +472,6 @@ const shouldRenderSegment = (congestionValue) => {
             setShowRecenter(true);
         }
     };
-    
-    
 
     // Handle exit navigation and reset all values
     const handleExitNavigation = () => {
@@ -461,314 +485,294 @@ const shouldRenderSegment = (congestionValue) => {
     };
 
     return (
-
-
         <View style={styles.container}>
-               <GestureHandlerRootView style={{ flex: 1 }}>
- 
-     <MapboxGL.MapView 
-                style={styles.map} 
-                styleURL={mapStyle}
-                onCameraChanged ={handleRegionIsChanging}
-            >
-               <MapboxGL.Camera
-                    followUserLocation={isFollowing}
-                    followUserMode="compass"
-                    followZoomLevel={18}
-                    followPitch={followPitch}
-                    onPanDrag={handlePanDrag}
-                />
-   
-   
-   {fullRoute.length > 0 && (
-    <MapboxGL.ShapeSource id="routeSource" shape={{ type: 'Feature', geometry: { type: 'LineString', coordinates: fullRoute } }}>
-        <MapboxGL.LineLayer id="routeLayer" style={{ lineColor: 'blue', lineWidth: 8, lineCap: 'round', lineJoin: 'round' }} />
-    </MapboxGL.ShapeSource>
-)}
+            <GestureHandlerRootView style={{ flex: 1 }}>
+                <MapboxGL.MapView
+                    style={styles.map}
+                    styleURL={mapStyle}
+                    onCameraChanged={handleRegionIsChanging}
+                >
+                    <MapboxGL.Camera
+                        followUserLocation={isFollowing}
+                        followUserMode="compass"
+                        followZoomLevel={18}
+                        followPitch={followPitch}
+                        onPanDrag={handlePanDrag}
+                    />
 
+                    {fullRoute.length > 0 && (
+                        <MapboxGL.ShapeSource id="routeSource" shape={{ type: 'Feature', geometry: { type: 'LineString', coordinates: fullRoute } }}>
+                            <MapboxGL.LineLayer id="routeLayer" style={{ lineColor: 'blue', lineWidth: 8, lineCap: 'round', lineJoin: 'round' }} />
+                        </MapboxGL.ShapeSource>
+                    )}
 
+                    {/* Congestion Route Segments */}
+                    {congestionSegments.length > 0 && (
+                        <MapboxGL.ShapeSource
+                            id="congestionSource"
+                            shape={{
+                                type: 'FeatureCollection',
+                                features: congestionSegments
+                            }}
+                        >
+                            <MapboxGL.LineLayer
+                                id="congestionLayer"
+                                style={{
+                                    lineWidth: 8, // Thinner or the same width as the base route
+                                    lineColor: ['get', 'color'], // Using the congestion color from the properties
+                                    lineCap: 'round',
+                                    lineJoin: 'round',
+                                    lineOpacity: 1,  // Make it fully visible
+                                }}
+                            />
+                        </MapboxGL.ShapeSource>
+                    )}
 
-  {/* Congestion Route Segments */}
-  {congestionSegments.length > 0 && (
-    <MapboxGL.ShapeSource
-        id="congestionSource"
-        shape={{
-            type: 'FeatureCollection',
-            features: congestionSegments
-        }}
-    >
-        <MapboxGL.LineLayer
-            id="congestionLayer"
-            style={{
-                lineWidth: 8, // Thinner or the same width as the base route
-                lineColor: ['get', 'color'], // Using the congestion color from the properties
-                lineCap: 'round',
-                lineJoin: 'round',
-                lineOpacity: 1,  // Make it fully visible
-            }}
-        />
-    </MapboxGL.ShapeSource>
-)}
+                    <MapboxGL.UserLocation
+                        visible={true}
+                        showsUserHeadingIndicator={true}
+                        onUpdate={(location) => {
+                            const { longitude, latitude, heading, speed } = location.coords;
+                            const newPosition = [longitude, latitude];
 
+                            setCurrentPosition(newPosition);
+                            setSpeed(speed || 0);
+                            // Adjust pitch when turning
+                            if (prevHeading !== null && heading !== null) {
+                                let headingChange = Math.abs(heading - prevHeading);
+                                if (headingChange > 180) {
+                                    headingChange = 360 - headingChange; // Adjust for wrap-around
+                                }
+                                if (headingChange > 15) {
+                                    // User is turning
+                                    setFollowPitch(75); // Increase tilt when turning
+                                } else {
+                                    // User is not turning
+                                    setFollowPitch(70); // Normal tilt
+                                }
+                            }
+                            // Proceed only if we have steps
+                            if (instructions.length > 0 && currentStepIndex < instructions.length) {
+                                const currentStep = instructions[currentStepIndex];
+                                // Update the current road name
+                                setCurrentRoadName(currentStep.name || 'Unknown Road');
+                            }
 
-             <MapboxGL.UserLocation
-      visible={true}
-      showsUserHeadingIndicator={true}
-      onUpdate={(location) => {
-          const { longitude, latitude, heading, speed } = location.coords;
-          const newPosition = [longitude, latitude];
-  
-          setCurrentPosition(newPosition);
-          setSpeed(speed || 0);
-    // Adjust pitch when turning
-    if (prevHeading !== null && heading !== null) {
-        let headingChange = Math.abs(heading - prevHeading);
-        if (headingChange > 180) {
-            headingChange = 360 - headingChange; // Adjust for wrap-around
-        }
-        if (headingChange > 15) {
-            // User is turning
-            setFollowPitch(75); // Increase tilt when turning
-        } else {
-            // User is not turning
-            setFollowPitch(70); // Normal tilt
-        }
-    }
-  // Proceed only if we have steps
-  if (instructions.length > 0 && currentStepIndex < instructions.length) {
-    const currentStep = instructions[currentStepIndex];
-  // Update the current road name
-  setCurrentRoadName(currentStep.name || 'Unknown Road');
-}
+                            // Check if user is off-route
+                            if (fullRoute.length > 0) {
+                                // Existing code for off-route detection...
+                            }
 
-// Check if user is off-route
-if (fullRoute.length > 0) {
-    // Existing code for off-route detection...
-}
+                            // Show recenter button when speed is zero and not already following
+                            if ((speed === 0 || speed === null) && !isFollowing && !showRecenter) {
+                                setShowRecenter(true);
+                            }
 
-// Show recenter button when speed is zero and not already following
-if ((speed === 0 || speed === null) && !isFollowing && !showRecenter) {
-    setShowRecenter(true);
-}
+                            // Hide recenter button when following
+                            if (isFollowing && showRecenter) {
+                                setShowRecenter(false);
+                            }
 
-// Hide recenter button when following
-if (isFollowing && showRecenter) {
-    setShowRecenter(false);
-}
+                            setPrevHeading(heading);
 
-    setPrevHeading(heading);
- 
-        if (instructions.length > 0 && currentStepIndex < instructions.length){
-            const currentStep = instructions[currentStepIndex];
-            const maneuverPoint = currentStep.maneuver.location; // [longitude, latitude]
+                            if (instructions.length > 0 && currentStepIndex < instructions.length) {
+                                const currentStep = instructions[currentStepIndex];
+                                const maneuverPoint = currentStep.maneuver.location; // [longitude, latitude]
 
-            // Calculate distance to the next maneuver point
-            const from = turf.point(newPosition);
-            const to = turf.point(maneuverPoint);
-            const options = { units: 'meters' };
+                                // Calculate distance to the next maneuver point
+                                const from = turf.point(newPosition);
+                                const to = turf.point(maneuverPoint);
+                                const options = { units: 'meters' };
 
-            const distance = turf.distance(from, to, options);
-            setDistanceToNextManeuver(distance);
+                                const distance = turf.distance(from, to, options);
+                                setDistanceToNextManeuver(distance);
 
-             // Update the current instruction with the remaining distance
-            setCurrentInstruction(
-               ` ${currentStep.maneuver.instruction} onto ${currentStep.name}`
-            );
+                                // Update the current instruction with the remaining distance
+                                setCurrentInstruction(
+                                    ` ${currentStep.maneuver.instruction} onto ${currentStep.name}`
+                                );
 
-            // Check if we should advance to the next step
-            if (distance < 10) {
-                if (currentStepIndex + 1 < instructions.length) {
-                    setCurrentStepIndex(currentStepIndex + 1);
-                } else {
-                    // Reached the final step
-                    if (!showModal) {
-                        setShowModal(true);
-                    }
-                }
-            }
-            
-        }
+                                // Check if we should advance to the next step
+                                if (distance < 10) {
+                                    if (currentStepIndex + 1 < instructions.length) {
+                                        setCurrentStepIndex(currentStepIndex + 1);
+                                    } else {
+                                        // Reached the final step
+                                        if (!showModal) {
+                                            setShowModal(true);
+                                        }
+                                    }
+                                }
 
+                            }
 
-              // Check if user is off-route
-              if (fullRoute.length > 0) {
-                const userPoint = turf.point(newPosition);
-                const routeLine = turf.lineString(fullRoute);
-    
-                const snapped = turf.nearestPointOnLine(routeLine, userPoint);
-                const distanceFromRoute = turf.distance(userPoint, snapped, { units: 'meters' });
-    
-                const currentTime = Date.now();
-    
-                if (distanceFromRoute > 30 && !isRecalculating && (currentTime - lastRecalculationTime > 10000)) {
-                    // User is off-route
-                    setIsRecalculating(true);
-                    setLastRecalculationTime(currentTime);
-                    recalculateRoute(newPosition);
-                }
-            }
+                            // Check if user is off-route
+                            if (fullRoute.length > 0) {
+                                const userPoint = turf.point(newPosition);
+                                const routeLine = turf.lineString(fullRoute);
 
-// Calculate remaining distance and duration
-const remainingSteps = instructions.slice(currentStepIndex);
-const distanceLeft = remainingSteps.reduce((sum, step) => sum + step.distance, 0);
-const durationLeft = remainingSteps.reduce((sum, step) => sum + step.duration, 0);
-setRemainingDistance(distanceLeft);
-setRemainingDuration(durationLeft);
+                                const snapped = turf.nearestPointOnLine(routeLine, userPoint);
+                                const distanceFromRoute = turf.distance(userPoint, snapped, { units: 'meters' });
 
-// Calculate ETA
-const currentTime = new Date();
-const etaTime = new Date(currentTime.getTime() + durationLeft * 1000);
-setEta(etaTime);
+                                const currentTime = Date.now();
 
-        }}
- 
-    locationPuck={{
-        type: 'circle',
-        circleColor: 'blue',
-        circleRadius: 10,
-        opacity: 0.8,
-    }}
-/>
+                                if (distanceFromRoute > 30 && !isRecalculating && (currentTime - lastRecalculationTime > 10000)) {
+                                    // User is off-route
+                                    setIsRecalculating(true);
+                                    setLastRecalculationTime(currentTime);
+                                    recalculateRoute(newPosition);
+                                }
+                            }
 
+                            // Calculate remaining distance and duration
+                            const remainingSteps = instructions.slice(currentStepIndex);
+                            const distanceLeft = remainingSteps.reduce((sum, step) => sum + step.distance, 0);
+                            const durationLeft = remainingSteps.reduce((sum, step) => sum + step.duration, 0);
+                            setRemainingDistance(distanceLeft);
+                            setRemainingDuration(durationLeft);
 
-   
-{/* Destination Annotation */}
-{destination && (
-        <MapboxGL.PointAnnotation
-            id="destination"
-            coordinate={[destination.longitude, destination.latitude]}
-        >
-            <MapboxGL.Callout title="Destination" />
-        </MapboxGL.PointAnnotation>
-    )}
-   
-   {stop && stop.longitude && stop.latitude && (
-  <MapboxGL.PointAnnotation
-      id="stop"
-      coordinate={[stop.longitude, stop.latitude]}
-  >
-      
-      <MapboxGL.Callout title="Stop" />
-  </MapboxGL.PointAnnotation>
-)}
+                            // Calculate ETA
+                            const currentTime = new Date();
+                            const etaTime = new Date(currentTime.getTime() + durationLeft * 1000);
+                            setEta(etaTime);
+                        }}
 
+                        locationPuck={{
+                            type: 'circle',
+                            circleColor: 'blue',
+                            circleRadius: 10,
+                            opacity: 0.8,
+                        }}
+                    />
 
-            </MapboxGL.MapView>
+                    {/* Destination Annotation */}
+                    {destination && (
+                        <MapboxGL.PointAnnotation
+                            id="destination"
+                            coordinate={[destination.longitude, destination.latitude]}
+                        >
+                            <MapboxGL.Callout title="Destination" />
+                        </MapboxGL.PointAnnotation>
+                    )}
 
-            {/* Current instruction card */}
-      {/* Current instruction card */}
-<TouchableOpacity onPress={toggleDropdown} style={styles.instructionCard}>
-    <Ionicons name={getManeuverIcon(currentInstruction)} size={30} color="black" style={styles.instructionIcon} />
-    <View style={{ flex: 1 }}>
-        <Text style={styles.instructionText}>{currentInstruction}</Text>
-        <Text style={styles.instructionDistance}>{Math.round(distanceToNextManeuver)} meters</Text>
-    </View>
-    <Ionicons color="black" name={isDropdownOpen ? 'chevron-up-outline' : 'chevron-down-outline'} size={30} />
-</TouchableOpacity>
+                    {/* Render Multiple Stops */}
+                    {stops.map((stop, index) => (
+                        <MapboxGL.PointAnnotation
+                            key={`stop-${index}`}
+                            id={`stop-${index}`}
+                            coordinate={[stop.longitude, stop.latitude]}
+                        >
+                            <MapboxGL.Callout title={`Stop ${index + 1}`} />
+                        </MapboxGL.PointAnnotation>
+                    ))}
 
+                </MapboxGL.MapView>
 
-            {/* Animated dropdown for turn-by-turn instructions */}
-            <Animated.View style={[styles.turnList, { height: dropdownHeight }]}>
-    {isDropdownOpen && (
-        <FlatList
-            data={remainingInstructions}
-            keyExtractor={(item, index) => `instruction_${currentStepIndex + index}`}
-            renderItem={({ item }) => (
-                <View style={styles.turnCard}>
-                    <Ionicons name={getManeuverIcon(item.maneuver.instruction)} size={30} color="black" />
-                    <View style={styles.turnCardText}>
-                        <Text style={styles.turnCardDistance}>{Math.round(item.distance)} m</Text>
-                        <Text style={styles.turnCardRoad}>{item.name || 'Unknown Road'}</Text>
+                {/* Current instruction card */}
+                <TouchableOpacity onPress={toggleDropdown} style={styles.instructionCard}>
+                    <Ionicons name={getManeuverIcon(currentInstruction)} size={30} color="black" style={styles.instructionIcon} />
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.instructionText}>{currentInstruction}</Text>
+                        <Text style={styles.instructionDistance}>{Math.round(distanceToNextManeuver)} meters</Text>
                     </View>
-                </View>
-            )}
-            contentContainerStyle={{ paddingBottom: 10 }}
-        />
-    )}
-</Animated.View>
-
-
-{showRecenter && (
-                <TouchableOpacity style={styles.recenterButton} onPress={recenterMap}>
-                    <Ionicons name="locate" size={30} color="black" />
+                    <Ionicons color="black" name={isDropdownOpen ? 'chevron-up-outline' : 'chevron-down-outline'} size={30} />
                 </TouchableOpacity>
-            )}
 
-            {/* Speedometer at the bottom left */}
-            <View style={styles.speedometer}>
-                <Text style={styles.speedText}>{speed > 0 ? `${Math.round(speed * 3.6)} km/h` : '0 km/h'}</Text>
-            </View>
+                {/* Animated dropdown for turn-by-turn instructions */}
+                <Animated.View style={[styles.turnList, { height: dropdownHeight }]}>
+                    {isDropdownOpen && (
+                        <FlatList
+                            data={remainingInstructions}
+                            keyExtractor={(item, index) => `instruction_${currentStepIndex + index}`}
+                            renderItem={({ item }) => (
+                                <View style={styles.turnCard}>
+                                    <Ionicons name={getManeuverIcon(item.maneuver.instruction)} size={30} color="black" />
+                                    <View style={styles.turnCardText}>
+                                        <Text style={styles.turnCardDistance}>{Math.round(item.distance)} m</Text>
+                                        <Text style={styles.turnCardRoad}>{item.name || 'Unknown Road'}</Text>
+                                    </View>
+                                </View>
+                            )}
+                            contentContainerStyle={{ paddingBottom: 10 }}
+                        />
+                    )}
+                </Animated.View>
 
+                {showRecenter && (
+                    <TouchableOpacity style={styles.recenterButton} onPress={recenterMap}>
+                        <Ionicons name="locate" size={30} color="black" />
+                    </TouchableOpacity>
+                )}
 
+                {/* Speedometer at the bottom left */}
+                <View style={styles.speedometer}>
+                    <Text style={styles.speedText}>{speed > 0 ? `${Math.round(speed * 3.6)} km/h` : '0 km/h'}</Text>
+                </View>
 
-            {/* Modal for exit confirmation */}
-            <Modal
-                transparent={true}
-                visible={showExitModal}
-                animationType="slide"
-                onRequestClose={() => setShowExitModal(false)}
-            >
-                <View style={styles.modalContainer}>
-                    <View style={styles.modalContent}>
-                        <Text style={styles.modalText}>Do you want to exit navigation?</Text>
-                        <View style={styles.modalButtons}>
-                            <Button title="Yes" onPress={handleExitNavigation} />
-                            <Button title="No" onPress={() => setShowExitModal(false)} />
+                {/* Modal for exit confirmation */}
+                <Modal
+                    transparent={true}
+                    visible={showExitModal}
+                    animationType="slide"
+                    onRequestClose={() => setShowExitModal(false)}
+                >
+                    <View style={styles.modalContainer}>
+                        <View style={styles.modalContent}>
+                            <Text style={styles.modalText}>Do you want to exit navigation?</Text>
+                            <View style={styles.modalButtons}>
+                                <Button title="Yes" onPress={handleExitNavigation} />
+                                <Button title="No" onPress={() => setShowExitModal(false)} />
+                            </View>
                         </View>
                     </View>
-                </View>
-            </Modal>
+                </Modal>
 
-            {/* Modal for destination reached */}
-            <Modal
-                transparent={true}
-                visible={showModal}
-                animationType="slide"
-                onRequestClose={() => setShowModal(false)}
-            >
-                <View style={styles.modalContainer}>
-                    <View style={styles.modalContent}>
-                        <Text style={styles.modalText}>Destination Reached!</Text>
-                        <Button title="OK" onPress={() => {
-                            setShowModal(false);
-                            navigation.goBack(); 
-                        }} />
+                {/* Modal for destination reached */}
+                <Modal
+                    transparent={true}
+                    visible={showModal}
+                    animationType="slide"
+                    onRequestClose={() => setShowModal(false)}
+                >
+                    <View style={styles.modalContainer}>
+                        <View style={styles.modalContent}>
+                            <Text style={styles.modalText}>Destination Reached!</Text>
+                            <Button title="OK" onPress={() => {
+                                setShowModal(false);
+                                navigation.goBack();
+                            }} />
+                        </View>
                     </View>
-                </View>
-            </Modal>
+                </Modal>
 
-         
-  <BottomSheet
-    ref={bottomSheetRef}
-    index={0} // Initial snap point index
-    snapPoints={snapPoints}
-    enablePanDownToClose={false} // Prevent closing the sheet by dragging down
-    handleIndicatorStyle={{ backgroundColor: 'gray' }}
-  >
-    {/* Content of the bottom sheet */}
-    <View style={styles.bottomSheetContent}>
-    <Text style={styles.summaryTitle}>{ formatTime(eta) }</Text>
-         
-    <Text style={styles.summaryText}>
-      { (remainingDistance / 1000).toFixed(1) } km  |  { formatDuration(remainingDuration) }
-    </Text>
+                <BottomSheet
+                    ref={bottomSheetRef}
+                    index={0} // Initial snap point index
+                    snapPoints={snapPoints}
+                    enablePanDownToClose={false} // Prevent closing the sheet by dragging down
+                    handleIndicatorStyle={{ backgroundColor: 'gray' }}
+                >
+                    {/* Content of the bottom sheet */}
+                    <View style={styles.bottomSheetContent}>
+                        <Text style={styles.summaryTitle}>{formatTime(eta)}</Text>
+                        <Text style={styles.summaryText}>
+                            {(remainingDistance / 1000).toFixed(1)} km  |  {formatDuration(remainingDuration)}
+                        </Text>
 
-
-    <RouteInfoCard
-  destinationName={destinationName}
-  viaRoad={currentRoadName} // Replace with the actual road name variable
-  onAddStop={handleAddStop}
-/>
-  </View>
-
-  </BottomSheet>
-</GestureHandlerRootView>
-
+                        <RouteInfoCard
+                            destinationName={destinationName}
+                            viaRoad={currentRoadName}
+                            onAddStop={handleAddStop}
+                        />
+                    </View>
+                </BottomSheet>
+            </GestureHandlerRootView>
         </View>
     );
 };
 
 const styles = StyleSheet.create({
+    // Add your styles here
     container: { flex: 1 },
     map: { flex: 1 },
     instructionCard: {
@@ -845,12 +849,15 @@ const styles = StyleSheet.create({
         backgroundColor: 'rgba(0,0,0,0.5)',
     },
     modalContent: {
+        margin: 20,
         backgroundColor: 'white',
         padding: 20,
         borderRadius: 10,
         elevation: 5,
     },
     modalText: {
+        marginBottom: 15,
+        textAlign: 'center',
         fontSize: 18,
         fontWeight: 'bold',
         color:'black'
@@ -885,14 +892,14 @@ const styles = StyleSheet.create({
       },summaryContainer: {
         padding: 20,
         alignItems: 'center',
-      },
-      summaryTitle: {
+    },
+    summaryTitle: {
         fontSize: 24,
         fontWeight: 'bold',
         color: 'black',
    
-      },
-      summaryText: {
+    },
+    summaryText: {
         fontSize: 20,
         color: 'gray',
       },cardinfocontainer:{
@@ -908,7 +915,6 @@ const styles = StyleSheet.create({
         width: 40,
         height: 40,
     },
-      
 });
 
 export default NavigationScreen;

@@ -1,12 +1,20 @@
 import React, { useState, useCallback } from 'react';
-import { View, TextInput, FlatList, Text, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
-import axios from 'axios';
+import {
+    SafeAreaView,
+    View,
+    TextInput,
+    FlatList,
+    TouchableOpacity,
+    Text,
+    StyleSheet,
+} from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { MAPBOX_API_TOKEN } from '@env';
+import axios from 'axios';
 import { debounce } from 'lodash';
+import { MAPBOX_API_TOKEN } from '@env'; // Ensure you have your Mapbox API token here
 
 const StopSearchScreen = ({ route, navigation }) => {
-    const { origin, destination, currentRoute } = route.params;
+    const { origin, destination, stops } = route.params;
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState([]);
 
@@ -44,11 +52,10 @@ const StopSearchScreen = ({ route, navigation }) => {
     const handleSelectStop = (item) => {
         if (item.geometry && item.geometry.coordinates) {
             const [longitude, latitude] = item.geometry.coordinates;
-            console.log('Selected Stop:', { longitude, latitude });  // Log stop before navigating
-            navigation.navigate('NavigationScreen', {
-                origin,
-                destination,
-                stop: { longitude, latitude }, // Ensure stop is passed correctly
+            navigation.navigate({
+                name: 'NavigationScreen',
+                params: { newStop: { longitude, latitude } },
+                merge: true,
             });
         }
     };
@@ -94,6 +101,7 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         padding: 10,
+        backgroundColor: '#F5F5F5',
         margin: 10,
         backgroundColor: '#fff',
         borderRadius: 8,

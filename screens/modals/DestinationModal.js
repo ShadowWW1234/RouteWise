@@ -66,29 +66,23 @@ const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch
             }
         }
     }, [userLocation, origin]);
+   
     const handleGoOrPreview = () => {
-        if (isPreviewMode) {
-            if (origin && destination && routes.length > 0 && selectedRouteIndex >= 0) {
-                const selectedRoute = routes[selectedRouteIndex];  // Make sure the route exists
-    
-                if (selectedRoute) {
-                    // Navigate to preview mode with valid route data
-                    navigation.navigate('PreviewMapScreen', {
-                        origin,
-                        destination,
-                        route: selectedRoute,  // Pass the selected route
-                    });
-                    console.log('Navigating to PreviewMapScreen with route:', selectedRoute);
-                } else {
-                    console.error('Selected route is undefined.');
-                }
-            } else {
-                console.error('Missing required parameters or invalid route data.');
-            }
+        if (!isRouteFetched) {
+            handleGoNow(); // Fetch routes and display them
+        } else if (isPreviewMode) {
+            // Navigate to preview mode
+            navigation.navigate('PreviewMapScreen', {
+                origin,
+                destination,
+                route: routes[selectedRouteIndex], // Pass the selected route
+            });
+            toggleModal(); // Close the DestinationModal
         } else {
             handleGoNow();  // Proceed to regular navigation if not in preview mode
         }
     };
+    
     
     
     
@@ -150,75 +144,35 @@ const formatDuration = (durationInSeconds) => {
 };
 
 
-    const fitToMarkers = () => {
-        if (origin && destination && cameraRef.current) {
-            if (
-                typeof origin.longitude === 'number' && 
-                typeof origin.latitude === 'number' && 
-                typeof destination.longitude === 'number' && 
-                typeof destination.latitude === 'number'
-            ) {
-                // Define bounds for the camera view
-                const bounds = {
-                    ne: [
-                        Math.max(origin.longitude, destination.longitude), 
-                        Math.max(origin.latitude, destination.latitude)
-                    ],
-                    sw: [
-                        Math.min(origin.longitude, destination.longitude), 
-                        Math.min(origin.latitude, destination.latitude)
-                    ],
-                };
-    
-                // Add padding to the bounds
-                const padding = 0.01; // Adjust as needed
-                const expandedBounds = {
-                    ne: [
-                        bounds.ne[0] + padding, // Expand NE corner
-                        bounds.ne[1] + padding
-                    ],
-                    sw: [
-                        bounds.sw[0] - padding, // Expand SW corner
-                        bounds.sw[1] - padding
-                    ],
-                };
-    
-                // Fit the camera to the defined bounds
-                cameraRef.current.fitBounds(expandedBounds.ne, expandedBounds.sw, {
-                    padding: { top: 50, bottom: 50, left: 50, right: 50 }
-                });
-    
-                // Calculate the center of the bounds
-                const centerCoordinate = [
-                    (expandedBounds.ne[0] + expandedBounds.sw[0]) / 2,
-                    (expandedBounds.ne[1] + expandedBounds.sw[1]) / 2,
-                ];
-    
-                // Calculate the distance between the two points
-                const distance = Math.sqrt(
-                    Math.pow(destination.longitude - origin.longitude, 2) + 
-                    Math.pow(destination.latitude - origin.latitude, 2)
-                );
-    
-                // Adjust the zoom level based on the distance
-                // You can tweak the multiplier to control zoom sensitivity
-                const zoomLevel = Math.max(12 - distance * 10, 5); // Min zoom level is 5
-    
-                // Set the camera with a top-down view and calculated zoom level
-                cameraRef.current.setCamera({
-                    centerCoordinate: centerCoordinate,
-                    zoomLevel: zoomLevel, // Dynamically calculated zoom level
-                    pitch: 0, // Top-down view
-                    animationDuration: 1000,
-                    animationMode: 'moveTo',
-                });
-            } else {
-                console.error('Invalid coordinates for origin or destination');
-            }
-        } else {
-            console.error('Origin, destination, or camera reference is not defined');
-        }
-    };
+const fitToMarkers = () => {
+    if (origin && destination && cameraRef.current) {
+        // Define bounds for the camera view
+        const coordinates = [
+            [origin.longitude, origin.latitude],
+            [destination.longitude, destination.latitude],
+        ];
+
+        // Calculate bounding box
+        const bbox = coordinates.reduce((bbox, coord) => {
+            return [
+                Math.min(bbox[0], coord[0]), // min longitude
+                Math.min(bbox[1], coord[1]), // min latitude
+                Math.max(bbox[2], coord[0]), // max longitude
+                Math.max(bbox[3], coord[1]), // max latitude
+            ];
+        }, [Infinity, Infinity, -Infinity, -Infinity]);
+
+        // Adjust the camera to fit the bounding box
+        cameraRef.current.fitBounds(
+            [bbox[0], bbox[1]], // Southwest coordinates
+            [bbox[2], bbox[3]], // Northeast coordinates
+            50 // Padding
+        );
+    } else {
+        console.error('Origin, destination, or camera reference is not defined');
+    }
+};
+
      
     const startNavigation = () => {
         // Ensure valid index
@@ -265,13 +219,19 @@ const formatDuration = (durationInSeconds) => {
     };
     
 
+// useEffect(() => {
+//     if (origin && destination) {
+//         fetchRoutes();
+//     } else {
+//        // console.error('Invalid origin or destination:', origin, destination);
+//     }
+// }, [origin, destination]);
 useEffect(() => {
-    if (origin && destination) {
-        fetchRoutes();
-    } else {
-       // console.error('Invalid origin or destination:', origin, destination);
+    if (visible && origin && destination && cameraRef.current) {
+        // Set initial camera position
+        fitToMarkers();
     }
-}, [origin, destination]);
+}, [visible, origin, destination]);
 
 useEffect(() => {
     if (origin) {
@@ -317,9 +277,8 @@ useEffect(() => {
 
 const handleGoNow = () => {
     if (!loadingRoutes && !isRouteFetched) {
-        // If routes haven't been fetched yet, fetch them
+        // Fetch routes when the user clicks "View Routes"
         fetchRoutes();
-        fitToMarkers();
         setIsRouteFetched(true); // Set the flag to true once routes are fetched
     } else if (isRouteFetched) {
         // If routes are already fetched, trigger navigation
@@ -327,6 +286,7 @@ const handleGoNow = () => {
         toggleModal(); // Close the DestinationModal
     }
 };
+
 
 
 
@@ -529,9 +489,10 @@ const handleGoNow = () => {
             </View>
 
             <TouchableOpacity onPress={handleGoOrPreview} style={styles.viewRoutesButton}>
-    <Text style={styles.viewRoutesText}>
-        {isPreviewMode ? 'Preview Route' : (isRouteFetched ? 'Go Now' : 'View Routes')}
-    </Text>
+            <Text style={styles.viewRoutesText}>
+    {isRouteFetched ? (isPreviewMode ? 'Preview Route' : 'Go Now') : 'View Routes'}
+</Text>
+
 </TouchableOpacity>
 
 

@@ -18,7 +18,7 @@ const VehicleTypeSelection = ({ modalVisible, toggleModal }) => {
 
   const handleVehicleSelect = (vehicle) => {
     setSelectedVehicle(vehicle);
-  };
+  };  
 
   return (
     <Modal

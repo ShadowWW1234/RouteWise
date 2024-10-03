@@ -9,11 +9,15 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 MapboxGL.setAccessToken(MAPBOX_API_TOKEN);
 
 const PreviewMapScreen = ({ route }) => {
-    const { origin, destination, route: selectedRoute } = route.params || {};
+    const { origin, destination, route: selectedRoute } = route.params || {}; // Extract params
     const [currentStepIndex, setCurrentStepIndex] = useState(0); // Track the current turn instruction
     const [isExpanded, setIsExpanded] = useState(true); // Start with the combo box expanded
     const [selectedInstruction, setSelectedInstruction] = useState(null); // Store selected instruction
     const cameraRef = useRef(null);  // Initialize cameraRef using useRef
+    console.log('Origin:', origin);
+    console.log('Destination:', destination);
+    console.log('Selected Route:', selectedRoute);
+
 
     if (!origin || !destination || !selectedRoute) {
         return (
@@ -55,15 +59,16 @@ const PreviewMapScreen = ({ route }) => {
 const focusOnManeuver = (location, bearing) => {
     if (cameraRef.current && location) {
         cameraRef.current.setCamera({
-            centerCoordinate: [location[0], location[1]],  // Longitude and Latitude of the turn
-            zoomLevel: 17,  // Adjust zoom level
-            bearing: bearing || 0,  // Set the bearing (default 0 if no bearing is provided)
-            pitch: 60,  // Tilt the camera to give a passing through effect
+            centerCoordinate: [location[0], location[1]], 
+            zoomLevel: 17, 
+            bearing: bearing || 0, 
+            pitch: 60, 
             animationMode: 'flyTo',
             animationDuration: 1000,
         });
     }
 };
+
 
 // Function to update camera as user progresses through the route
 const updateCameraForCurrentStep = (currentStep) => {

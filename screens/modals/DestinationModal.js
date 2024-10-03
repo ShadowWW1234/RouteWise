@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect, useContext } from 'react';
-import { StyleSheet, View, Modal, Text, TouchableOpacity, ActivityIndicator, PermissionsAndroid, Platform } from 'react-native';
+import { StyleSheet, View, Modal, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import MapboxGL from '@rnmapbox/maps';
 import { useDispatch } from 'react-redux'; 
@@ -7,33 +7,6 @@ import { MapStyleContext } from '../context/MapStyleContext';
 import { useNavigation } from "@react-navigation/native";
 import {  MAPBOX_API_TOKEN } from '@env';
 import Geolocation from '@react-native-community/geolocation';
-
-
-// Function to get the user's current location
-const getCurrentLocation = (callback) => {
-    if (Platform.OS === 'android') {
-        PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION)
-        .then(granted => {
-            if (granted === PermissionsAndroid.RESULTS.GRANTED) {
-                Geolocation.getCurrentPosition(
-                    (position) => {
-                        callback(position.coords);  // Pass current location
-                    },
-                    (error) => console.log('Error getting location:', error),
-                    { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
-                );
-            }
-        });
-    } else {
-        Geolocation.getCurrentPosition(
-            (position) => {
-                callback(position.coords);  // Pass current location
-            },
-            (error) => console.log('Error getting location:', error),
-            { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
-        );
-    }
-};
 
 const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch}) => {
     const dispatch = useDispatch();
@@ -50,17 +23,15 @@ const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch
     const previewDistanceThreshold = 1; // Set a threshold (in km) to switch to preview mode
 
 
-      const navigation = useNavigation();
-
-    
-    
+    const navigation = useNavigation();
+ 
     const resetState = () => {
-       
         setRoutes([]);
         setSelectedRouteIndex(0);
-
     };
+
     useEffect(() => {
+        // Try to get the user's current location
         Geolocation.getCurrentPosition(
             (position) => {
                 setUserLocation({
@@ -68,10 +39,15 @@ const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch
                     longitude: position.coords.longitude,
                 });
             },
-            (error) => console.error(error),
+            (error) => {
+                console.error('Error getting location:', error);
+                // If location retrieval fails, set to preview mode
+                setIsPreviewMode(true);
+            },
             { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
         );
     }, []);
+
     
     useEffect(() => {
         if (userLocation && origin) {
@@ -83,51 +59,40 @@ const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch
             );
     
             // Switch to preview mode if the distance is greater than the threshold
-            setIsPreviewMode(distanceToOrigin > previewDistanceThreshold);
+            if (distanceToOrigin > previewDistanceThreshold) {
+                setIsPreviewMode(true);
+            } else {
+                setIsPreviewMode(false); // Otherwise, exit preview mode
+            }
         }
     }, [userLocation, origin]);
-   
     const handleGoOrPreview = () => {
-        if (!loadingRoutes && !isRouteFetched) {
-            // If routes haven't been fetched yet, fetch them
-            fetchRoutes();
-            fitToMarkers();
-            setIsRouteFetched(true); // Set the flag to true once routes are fetched
-        } else if (isRouteFetched) {
-            // Fetch the user's current location
-            getCurrentLocation((location) => {
-                
-                setUserLocation(location);
+        if (isPreviewMode) {
+            if (origin && destination && routes.length > 0 && selectedRouteIndex >= 0) {
+                const selectedRoute = routes[selectedRouteIndex];  // Make sure the route exists
     
-                // Calculate the distance between user's location and the origin
-                const distanceToOrigin = calculateDistance(
-                    location.latitude,
-                    location.longitude,
-                    origin.latitude,
-                    origin.longitude
-                );
-    
-                // If user is far from the origin, enter preview mode
-                if (distanceToOrigin > previewDistanceThreshold) {
-                    setIsPreviewMode(true);
+                if (selectedRoute) {
+                    // Navigate to preview mode with valid route data
                     navigation.navigate('PreviewMapScreen', {
                         origin,
                         destination,
-                        route: routes[selectedRouteIndex],  // Pass the selected route for preview
+                        route: selectedRoute,  // Pass the selected route
                     });
+                    console.log('Navigating to PreviewMapScreen with route:', selectedRoute);
                 } else {
-                    // Start real-time navigation
-                    startNavigation();
-                    toggleModal();  // Close the modal
+                    console.error('Selected route is undefined.');
                 }
-            }, (error) => {
-                // Add error handling for getCurrentLocation, such as location permissions issues
-                console.error('Error getting user location:', error);
-            });
+            } else {
+                console.error('Missing required parameters or invalid route data.');
+            }
+        } else {
+            handleGoNow();  // Proceed to regular navigation if not in preview mode
         }
     };
     
-
+    
+    
+    
     
 
     const handleCloseModal = () => {
@@ -139,38 +104,40 @@ const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch
         }
         toggleModal();  // Close the modal
     };
-   
+    
+    
     const fetchRoutes = async () => {
         if (!origin || !destination) return;
     
-        setLoadingRoutes(true);
+        setLoadingRoutes(true);  // Set loading state while fetching
     
         try {
             const response = await fetch(
                 `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}?alternatives=true&annotations=closure%2Cmaxspeed%2Ccongestion_numeric%2Ccongestion%2Cspeed%2Cdistance%2Cduration&exclude=ferry%2Cunpaved&geometries=geojson&language=en&overview=full&roundabout_exits=true&steps=true&access_token=${MAPBOX_API_TOKEN}`
             );
     
-            if (!response.ok) {
-                throw new Error(`Error: ${response.status} ${response.statusText}`);
-            }
-    
             const data = await response.json();
-            const mapboxRoutes = data.routes.map(route => ({
-                coordinates: route.geometry.coordinates,
-                congestionNumeric: route.legs[0]?.annotation?.congestion_numeric || [], // Default to an empty array if missing
-                steps: route.legs[0]?.steps || [],  // Ensure steps exist
-                duration: route.duration, // Duration in seconds
-            }));
     
-            setRoutes(mapboxRoutes);
-            if (mapboxRoutes.length > 0) {
-                setSelectedRouteIndex(0);
-                setIsRouteFetched(true);  // Mark routes as fetched
+            console.log('Fetched data:', data);  // Log fetched data
+    
+            if (data.routes && data.routes.length > 0) {
+                const mapboxRoutes = data.routes.map(route => ({
+                    coordinates: route.geometry.coordinates,
+                    congestionNumeric: route.legs[0].annotation.congestion_numeric,
+                    steps: route.legs[0].steps,  // Add steps for turn-by-turn navigation
+                    duration: route.duration,  // Extract duration (in seconds)
+                }));
+    
+                setRoutes(mapboxRoutes);  // Set the fetched routes
+                setSelectedRouteIndex(0);  // Set the first route as selected by default
+                console.log('Routes set:', mapboxRoutes);
+            } else {
+                console.error('No routes found.');
             }
         } catch (error) {
-            console.error('Error fetching routes:', error.message);
+            console.error('Error fetching routes:', error);
         } finally {
-            setLoadingRoutes(false);
+            setLoadingRoutes(false);  // Stop loading
         }
     };
     
@@ -254,23 +221,30 @@ const formatDuration = (durationInSeconds) => {
     };
      
     const startNavigation = () => {
-        if (selectedRouteIndex < 0 || selectedRouteIndex >= routes.length) return;
-    
+        // Ensure valid index
+        if (selectedRouteIndex < 0 || selectedRouteIndex >= routes.length) {
+            return;
+        }
+        
         const selectedRoute = routes[selectedRouteIndex];
-        if (!selectedRoute) return;
+        if (!selectedRoute) {
+            return;
+        }
     
+        // Extract the destination name
         const destinationName = destination.description.split(',')[0];
-    
+        console.log('Destination Name:', destinationName);
+
+        // Pass necessary data for navigation
         navigation.navigate('NavigationScreen', {
             origin,
             destination,
             route: selectedRoute,
             congestionDistance: selectedRoute.congestionDistance || 0,
             etaTime: selectedRoute.etaTime || 0,
-            destinationName,
+            destinationName
         });
     };
-    
     
 
     
@@ -293,13 +267,9 @@ const formatDuration = (durationInSeconds) => {
 
 useEffect(() => {
     if (origin && destination) {
-        const dist = calculateDistance(
-            origin.latitude,
-            origin.longitude,
-            destination.latitude,
-            destination.longitude
-        );
-        setDistance(dist.toFixed(2)); // Always set the distance when origin and destination are available
+        fetchRoutes();
+    } else {
+       // console.error('Invalid origin or destination:', origin, destination);
     }
 }, [origin, destination]);
 
@@ -345,7 +315,19 @@ useEffect(() => {
     }
 }, [routes, selectedRouteIndex]);
 
- 
+const handleGoNow = () => {
+    if (!loadingRoutes && !isRouteFetched) {
+        // If routes haven't been fetched yet, fetch them
+        fetchRoutes();
+        fitToMarkers();
+        setIsRouteFetched(true); // Set the flag to true once routes are fetched
+    } else if (isRouteFetched) {
+        // If routes are already fetched, trigger navigation
+        startNavigation(); // Start turn-by-turn navigation
+        toggleModal(); // Close the DestinationModal
+    }
+};
+
 
 
     const getCongestionColor = (congestionValue) => {

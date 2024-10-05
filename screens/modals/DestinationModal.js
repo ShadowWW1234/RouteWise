@@ -451,54 +451,53 @@ const handleGoNow = () => {
            
             {/* Destination Name and View Routes Button */}
             <View style={styles.modalContent}>
-    {destination && (
-        <>
-            <View style={styles.titleRow}>
-                {/* Title aligned to the left */}
-                <View style={styles.titleContainer}>
-                    <Text style={styles.title}>
-                        {destination.description.split(',')[0]}
-                    </Text>
-                </View>
+  {destination && (
+    <>
+      {/* Title and Distance aligned horizontally */}
+      <View style={styles.row}>
+        <View style={styles.leftColumn}>
+          <Text style={styles.title}>
+            {destination.description.split(',')[0]}
+          </Text>
+        </View>
+        <View style={styles.rightColumn}>
+          {distance && !isNaN(distance) ? (
+            <Text style={styles.distanceText}>
+              {distance} km
+            </Text>
+          ) : (
+            <Text style={styles.distanceText}>
+              Distance: N/A
+            </Text>
+          )}
+        </View>
+      </View>
 
-                {/* Distance and Estimated Time aligned to the right */}
-                <View style={styles.distanceTimeContainer}>
-                    {distance && !isNaN(distance) ? (
-                        <Text style={styles.distanceText}>
-                            {distance} km
-                        </Text>
-                    ) : (
-                        <Text style={styles.distanceText}>
-                            Distance: N/A
-                        </Text>
-                    )}
+      {/* Sub-location and Time/ETA aligned horizontally */}
+      <View style={styles.row}>
+        <View style={styles.leftColumn}>
+          <Text style={styles.locationSubText}>
+            {destination.description.split(',').slice(1).join(', ')}
+          </Text>
+        </View>
+        <View style={styles.rightColumn}>
+          {routes.length > 0 && (
+            <Text style={styles.estimatedTimeText}>
+              {formatDuration(routes[selectedRouteIndex].duration)}
+            </Text>
+          )}
+        </View>
+      </View>
 
-                    {routes.length > 0 && (
-                        <Text style={styles.estimatedTimeText}>
-                            {formatDuration(routes[selectedRouteIndex].duration)}
-                        </Text>
-                    )}
-                </View>
-            </View>
-
-            {/* Location aligned with subtext below title */}
-            <View style={styles.locationContainer}>
-                <Text style={styles.locationSubText}>
-                    {destination.description.split(',').slice(1).join(', ')}
-                </Text>
-            </View>
-
-            <TouchableOpacity onPress={handleGoOrPreview} style={styles.viewRoutesButton}>
-            <Text style={styles.viewRoutesText}>
-    {isRouteFetched ? (isPreviewMode ? 'Preview Route' : 'Go Now') : 'View Routes'}
-</Text>
-
-</TouchableOpacity>
-
-
-        </>
-    )}
+      <TouchableOpacity onPress={handleGoOrPreview} style={styles.viewRoutesButton}>
+        <Text style={styles.viewRoutesText}>
+          {isRouteFetched ? (isPreviewMode ? 'Preview Route' : 'Go Now') : 'View Routes'}
+        </Text>
+      </TouchableOpacity>
+    </>
+  )}
 </View>
+
 
 
     
@@ -587,9 +586,9 @@ const styles = StyleSheet.create({
     },
     titleRow: {
         flexDirection: 'row',
-        justifyContent: 'space-between', // Space between title and distance/time
-        alignItems: 'center',
-        marginBottom: 10,
+        justifyContent: 'space-between', // Space out the title and distance/time
+        paddingHorizontal: 20,
+        marginBottom: 10, // Add margin to separate title from content
     },
     title: {
         fontSize: 24,
@@ -599,20 +598,38 @@ const styles = StyleSheet.create({
     locationContainer: {
         marginTop: 5,
     },
-    locationSubText: {
-        fontSize: 16,
-        color: 'white',
-    },
+   locationSubText: {
+    fontSize: 16,
+    color: 'white',
+    marginLeft:-5
+  },
     distanceTimeContainer: {
-        alignItems: 'flex-end', // Align distance and time to the right
+        alignItems: 'flex-end',
+        marginRight: 10, // Add padding from the right side for breathing room
     },
     distanceText: {
-        fontSize: 16,
+        fontSize: 18,
         color: 'gray',
-    },
-    estimatedTime: {
-        fontSize: 16,
-        color: 'gray',
-        marginTop: 5, // Slightly space from distance text
-    },
+        fontWeight: 'bold',
+      },
+      estimatedTimeText: {
+        fontSize: 18,
+        color: '#FFA726', // Highlight the ETA with a warmer color
+      },
+      titleContainer: {
+        flex: 1,
+        justifyContent: 'center',
+    },row: {
+        flexDirection: 'row',
+        justifyContent: 'space-between', // Aligns items to be spaced apart
+        paddingHorizontal: 20, // Add padding for better alignment
+        marginBottom: 5, // Space between rows
+      }, leftColumn: {
+        flex: 1, // Pushes the left column (Title/Sub-location) to the left
+        justifyContent: 'center',
+      },
+      rightColumn: {
+        justifyContent: 'center',
+        alignItems: 'flex-end', // Aligns distance and time/ETA to the right
+      },
 });

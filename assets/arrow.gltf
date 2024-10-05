@@ -1,0 +1,123 @@
+{
+    "asset": {
+        "version": "2.0",
+        "generator": "Open Asset Import Library (assimp v5.0.5eb040c7)"
+    },
+    "accessors": [
+        {
+            "bufferView": 0,
+            "byteOffset": 0,
+            "componentType": 5126,
+            "count": 5,
+            "type": "VEC3",
+            "max": [
+                21.0,
+                -23.0,
+                3.0
+            ],
+            "min": [
+                -10.0,
+                -49.0,
+                0.0
+            ]
+        },
+        {
+            "bufferView": 1,
+            "byteOffset": 0,
+            "componentType": 5125,
+            "count": 18,
+            "type": "SCALAR",
+            "max": [
+                4
+            ],
+            "min": [
+                0
+            ]
+        }
+    ],
+    "buffers": [
+        {
+            "byteLength": 132,
+            "uri": "result.bin"
+        }
+    ],
+    "bufferViews": [
+        {
+            "buffer": 0,
+            "byteOffset": 0,
+            "byteLength": 60,
+            "target": 34962
+        },
+        {
+            "buffer": 0,
+            "byteOffset": 60,
+            "byteLength": 72,
+            "target": 34963
+        }
+    ],
+    "materials": [
+        {
+            "name": "DefaultMaterial",
+            "pbrMetallicRoughness": {
+                "baseColorFactor": [
+                    0.6000000238418579,
+                    0.6000000238418579,
+                    0.6000000238418579,
+                    1.0
+                ],
+                "metallicFactor": 0.0
+            }
+        },
+        {
+            "name": "color_40919",
+            "pbrMetallicRoughness": {
+                "baseColorFactor": [
+                    0.6000000238418579,
+                    0.6000000238418579,
+                    0.6000000238418579,
+                    1.0
+                ],
+                "metallicFactor": 0.0
+            }
+        }
+    ],
+    "meshes": [
+        {
+            "name": "group_0_40919",
+            "primitives": [
+                {
+                    "mode": 4,
+                    "material": 1,
+                    "indices": 1,
+                    "attributes": {
+                        "POSITION": 0
+                    }
+                }
+            ]
+        }
+    ],
+    "nodes": [
+        {
+            "name": "input.obj",
+            "children": [
+                1,
+                2
+            ]
+        },
+        {
+            "name": "obj_0"
+        },
+        {
+            "name": "group_0_40919",
+            "mesh": 0
+        }
+    ],
+    "scenes": [
+        {
+            "nodes": [
+                0
+            ]
+        }
+    ],
+    "scene": 0
+}

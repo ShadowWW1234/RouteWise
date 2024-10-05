@@ -1,6 +1,6 @@
 // RouteInfoCard.js
 import React, { useRef, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing } from 'react-native';
+import { View, Text, StyleSheet, Image,TouchableOpacity, Animated, Easing } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 
 const RouteInfoCard = ({ destinationName, viaRoad, onAddStop, progress }) => {
@@ -69,13 +69,16 @@ const RouteInfoCard = ({ destinationName, viaRoad, onAddStop, progress }) => {
                 {/* Moving '>' Icon */}
                 {lineWidth > 0 && (
                     <Animated.View style={[styles.marker, { transform: [{ translateX }] }]}>
-                        <Ionicons name="arrow-forward" size={24} color="#007AFF" />
+                        <Image
+        source={require('../assets/car.png')} // Path to the image
+        style={styles.image}
+      />
                     </Animated.View>
                 )}
 
-                {/* Destination '🏁' Icon */}
+                {/* Destination '' Icon */}
                 <View style={styles.destinationIcon}>
-                    <Ionicons name="flag" size={24} color="red" />
+                     <Text>🏁</Text>
                 </View>
             </View>
 
@@ -167,7 +170,11 @@ const styles = StyleSheet.create({
     addStopText: {
         fontSize: 16,
         color: '#007AFF',
-    },
+    }, image: {
+        width: 30,  // Set the width of the image
+        height: 30, // Set the height of the image
+        resizeMode: 'contain', // Ensure the image scales properly
+      },
 });
 
 export default RouteInfoCard;

@@ -1,7 +1,5 @@
-// RouteInfoCard.js
 import React, { useRef, useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Image,TouchableOpacity, Animated, Easing } from 'react-native';
-import Ionicons from 'react-native-vector-icons/Ionicons';
+import { View, Text, StyleSheet, Image, TouchableOpacity, Animated, Easing } from 'react-native';
 
 const RouteInfoCard = ({ destinationName, viaRoad, onAddStop, progress }) => {
     const [lineWidth, setLineWidth] = useState(0);
@@ -11,29 +9,23 @@ const RouteInfoCard = ({ destinationName, viaRoad, onAddStop, progress }) => {
     const clampedProgress = Math.min(Math.max(progress, 0), 1);
 
     useEffect(() => {
-      Animated.timing(animatedValue, {
-          toValue: clampedProgress,
-          duration: 500, // Adjust for smoothness
-          easing: Easing.out(Easing.ease), // Corrected easing function
-          useNativeDriver: false, // Width cannot be animated with native driver
-      }).start();
-  }, [clampedProgress, animatedValue]);
+        // Animate the width of the traversed line and car icon
+        Animated.timing(animatedValue, {
+            toValue: clampedProgress,
+            duration: 500, // Adjust for smoothness
+            easing: Easing.out(Easing.ease),
+            useNativeDriver: false, // Width cannot be animated with native driver
+        }).start();
+    }, [clampedProgress]);
 
-  Animated.timing(animatedValue, {
-    toValue: clampedProgress,
-    duration: 500, // Adjust for smoothness
-    easing: Easing.out(Easing.ease), // Correct usage
-    useNativeDriver: false, // Width cannot be animated with native driver
-}).start();
-
-    // Interpolate progress for the '>' icon position
+    // Interpolate progress for the car icon's translateX position
     const translateX = animatedValue.interpolate({
         inputRange: [0, 1],
-        outputRange: [0, lineWidth - 24], // 24 is the icon width
+        outputRange: [0, lineWidth - 24], // 24 is the car icon width
     });
 
     return (
-        <View style={styles.cardInfoContainer} accessible={true} accessibilityLabel={`Route progress: ${Math.round(clampedProgress * 100)} percent completed`}>
+        <View style={styles.cardInfoContainer}>
             {/* Destination Name */}
             <Text style={styles.destinationText}>{destinationName}</Text>
 
@@ -48,7 +40,7 @@ const RouteInfoCard = ({ destinationName, viaRoad, onAddStop, progress }) => {
                 style={styles.timelineContainer}
                 onLayout={(event) => {
                     const { width } = event.nativeEvent.layout;
-                    setLineWidth(width);
+                    setLineWidth(width); // Capture the line width on layout
                 }}
             >
                 {/* Remaining Route Line */}
@@ -60,25 +52,28 @@ const RouteInfoCard = ({ destinationName, viaRoad, onAddStop, progress }) => {
                         style={[
                             styles.traversedLine,
                             {
-                                width: lineWidth * clampedProgress,
+                                width: animatedValue.interpolate({
+                                    inputRange: [0, 1],
+                                    outputRange: [0, lineWidth], // Animate the width based on progress
+                                }),
                             },
                         ]}
                     />
                 )}
 
-                {/* Moving '>' Icon */}
+                {/* Moving Car Icon */}
                 {lineWidth > 0 && (
                     <Animated.View style={[styles.marker, { transform: [{ translateX }] }]}>
                         <Image
-        source={require('../assets/car.png')} // Path to the image
-        style={styles.image}
-      />
+                            source={require('../assets/car.png')} // Ensure this path is correct
+                            style={styles.image}
+                        />
                     </Animated.View>
                 )}
 
-                {/* Destination '' Icon */}
+                {/* Destination Icon */}
                 <View style={styles.destinationIcon}>
-                     <Text>🏁</Text>
+                    <Text>🏁</Text>
                 </View>
             </View>
 
@@ -110,7 +105,6 @@ const styles = StyleSheet.create({
         },
         shadowOpacity: 0.25,
         shadowRadius: 3.84,
-
         elevation: 5,
     },
     destinationText: {
@@ -133,26 +127,26 @@ const styles = StyleSheet.create({
         position: 'relative',
     },
     routeLine: {
-      position: 'absolute',
-      left: 0,
-      right: 0,
-      height: 2,
-      borderStyle: 'dashed',
-      borderWidth: 1,
-      borderColor: '#d3d3d3', // Light gray dashed line
-      borderRadius: 1,
-  },
-  
+        position: 'absolute',
+        left: 0,
+        right: 0,
+        height: 8,
+        borderWidth: 1,
+        borderColor: '#d3d3d3', // Light gray dashed line
+        borderRadius: 10,
+    },
     traversedLine: {
         position: 'absolute',
         left: 0,
-        height: 2,
+        height: 8,
         backgroundColor: '#007AFF', // Blue for traversed route
+        borderRadius: 10,
     },
     marker: {
         position: 'absolute',
         top: -10, // Adjust to align with the line
-        // left is controlled by translateX
+        width: 30,
+        height: 30,
     },
     destinationIcon: {
         position: 'absolute',
@@ -170,11 +164,12 @@ const styles = StyleSheet.create({
     addStopText: {
         fontSize: 16,
         color: '#007AFF',
-    }, image: {
-        width: 30,  // Set the width of the image
-        height: 30, // Set the height of the image
+    },
+    image: {
+        width: 30, // Set the width of the car icon image
+        height: 30, // Set the height of the car icon image
         resizeMode: 'contain', // Ensure the image scales properly
-      },
+    },
 });
 
 export default RouteInfoCard;

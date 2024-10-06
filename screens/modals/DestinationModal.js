@@ -609,7 +609,7 @@ const styles = StyleSheet.create({
     },
     distanceText: {
         fontSize: 18,
-        color: 'gray',
+        color: 'white',
         fontWeight: 'bold',
       },
       estimatedTimeText: {

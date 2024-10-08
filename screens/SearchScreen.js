@@ -1,5 +1,5 @@
 import { StyleSheet, Text, View, SafeAreaView, TouchableOpacity, TextInput, Modal } from 'react-native';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect,useContext } from 'react';
 import tw from "tailwind-react-native-classnames";  
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import VehicleTypeSelection from './modals/VehicleTypeSelection';
@@ -9,14 +9,20 @@ import SideBar from '../screens/SideBar';
 import DestinationModal from '../screens/modals/DestinationModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { GasConsumptionContext } from '../screens/context/GasConsumptionProvider';
+
 
 const SearchScreen = () => {
-    const [modalVisible, setModalVisible] = useState(false);
+ 
     const [isSearchModalVisible, setSearchModalVisible] = useState(false);
     const [isDestinationModalVisible, setDestinationModalVisible] = useState(false);
     const [selectedDestination, setSelectedDestination] = useState(null);
     const [selectedOrigin, setSelectingOrigin] = useState(null);
-
+  
+    const { gasConsumption ,setGasConsumption } = useContext(GasConsumptionContext);
+    const [modalVisible, setModalVisible] = useState(!gasConsumption); // Show modal if gasConsumption is not set
+  
+    
     // Function to toggle the DestinationModal
     const toggleDestinationModal = () => setDestinationModalVisible(!isDestinationModalVisible);
     
@@ -26,7 +32,24 @@ const SearchScreen = () => {
         console.log("resetSearch function is called"); // Debugging log
     };
     
-
+    useEffect(() => {
+        const loadGasConsumption = async () => {
+          try {
+            const savedGasConsumption = await AsyncStorage.getItem('gasConsumption');
+            if (savedGasConsumption) {
+              const parsedGasConsumption = parseFloat(savedGasConsumption);
+              if (!isNaN(parsedGasConsumption)) {
+                setGasConsumption(parsedGasConsumption);
+                console.log('ParentScreen - gasConsumption loaded:', parsedGasConsumption);
+              }
+            }
+          } catch (error) {
+            console.error('Failed to load gas consumption:', error);
+          }
+        };
+    
+        loadGasConsumption();
+      }, []);
     // Save the modal state when it's updated
     useEffect(() => {
         const saveModalState = async () => {
@@ -53,7 +76,16 @@ const SearchScreen = () => {
         };
         loadModalState();
     }, []);
-
+    useEffect(() => {
+        console.log('ParentScreen - gasConsumption:', gasConsumption);
+      }, [gasConsumption]);
+      
+      // Add a useEffect to log when selectedDestination changes
+      useEffect(() => {
+        console.log('ParentScreen - selectedDestination:', selectedDestination);
+        console.log('ParentScreen - gasConsumption after selecting destination:', gasConsumption);
+      }, [selectedDestination]);
+      
     // Handle place selection from the SearchBar
     const handlePlaceSelect = (origin, destination) => {
         setSelectingOrigin(origin);
@@ -89,7 +121,7 @@ const SearchScreen = () => {
                     </View>
                 </TouchableOpacity>
                 <GestureHandlerRootView style={{ flex: 1 }}>
-                <VehicleTypeSelection modalVisible={modalVisible} toggleModal={toggleModal} />
+                <VehicleTypeSelection modalVisible={modalVisible} toggleModal={toggleModal} onSaveGasConsumption={setGasConsumption}/>
                 </GestureHandlerRootView>
 
             </View>
@@ -99,6 +131,7 @@ const SearchScreen = () => {
                 modalVisible={isSearchModalVisible} 
                 toggleModal={toggleSearchModal}  
                 onPlaceSelect={handlePlaceSelect} 
+                gasConsumption={gasConsumption}
             />
 
             {/* Search Bar Input */}
@@ -124,6 +157,7 @@ const SearchScreen = () => {
                 destination={selectedDestination}
                 origin={selectedOrigin}
                 resetSearch={resetSearch}  // Pass resetSearch
+                gasConsumption={gasConsumption}
             />
         </SafeAreaView>
     );

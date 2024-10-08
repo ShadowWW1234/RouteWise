@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import {
   View,
   Text,
@@ -7,46 +7,56 @@ import {
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
+import { GasConsumptionContext } from '../context/GasConsumptionProvider';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const GasConsumptionModal = ({ isVisible, toggleModal, saveConsumption }) => {
-    const [consumption, setConsumption] = useState('');
-  
-    const handleSave = () => {
-      if (consumption !== '') {
-        saveConsumption(consumption); // Save consumption value to parent
-        toggleModal(); // Close modal after saving
-      } else {
-        alert('Please enter your fuel consumption');
+const GasConsumptionModal = ({ isVisible, toggleModal }) => {
+  const [consumption, setConsumption] = useState('');
+  const { updateGasConsumption } = useContext(GasConsumptionContext);  // Get updateGasConsumption from context
+
+  const handleSave = async () => {
+    try {
+      // Save gas consumption to AsyncStorage
+      await AsyncStorage.setItem('gasConsumption', consumption); // Save gas consumption
+      
+      // Validate and update gas consumption in the context
+      const parsedConsumption = parseFloat(consumption);
+      if (!isNaN(parsedConsumption)) {
+        updateGasConsumption(parsedConsumption); // Update via context
       }
-    };
-  
-    return (
-      <Modal visible={isVisible} animationType="slide" transparent={true}>
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Enter Fuel Consumption (km/L)</Text>
-  
-            <TextInput
-              style={styles.inputField}
-              placeholder="Enter L/km"
-              keyboardType="numeric"
-              value={consumption}  
-              onChangeText={setConsumption}  // Correctly update consumption
-            />
-  
-            <TouchableOpacity onPress={handleSave} style={styles.saveButton}>
-              <Text style={styles.saveButtonText}>Save</Text>
-            </TouchableOpacity>
-  
-            <TouchableOpacity onPress={toggleModal} style={styles.cancelButton}>
-              <Text style={styles.cancelButtonText}>Cancel</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-    );
+      
+      toggleModal(); // Close the modal after saving
+    } catch (error) {
+      console.error('Failed to save gas consumption:', error);
+    }
   };
-  
+
+  return (
+    <Modal visible={isVisible} animationType="slide" transparent={true}>
+      <View style={styles.modalContainer}>
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>Enter Fuel Consumption (km/L)</Text>
+
+          <TextInput
+            style={styles.inputField}
+            placeholder="Enter L/km"
+            keyboardType="numeric"
+            value={consumption}
+            onChangeText={setConsumption}  // Update consumption state
+          />
+
+          <TouchableOpacity onPress={handleSave} style={styles.saveButton}>
+            <Text style={styles.saveButtonText}>Save</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={toggleModal} style={styles.cancelButton}>
+            <Text style={styles.cancelButtonText}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+};
 
 const styles = StyleSheet.create({
   modalContainer: {
@@ -66,7 +76,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold',
     marginBottom: 20,
-    color:'black'
+    color: 'black',
   },
   inputField: {
     width: '100%',
@@ -77,10 +87,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     marginBottom: 20,
     color: 'black',
-    textAlign: 'center', // Centers text horizontally
-    textAlignVertical: 'center', // Centers text vertically (only works on Android)
+    textAlign: 'center',
+    textAlignVertical: 'center',  // For Android
   },
-  
   saveButton: {
     backgroundColor: '#007AFF',
     paddingVertical: 10,

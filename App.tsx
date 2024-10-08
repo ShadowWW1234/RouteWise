@@ -12,6 +12,7 @@ import RouteDetailsScreen from './screens/RouteDetailsScreen';
 import NavigationScreen from './screens/NavigationScreen';
 import StopSearchScreen from './screens/modals/StopSearchScreen';
 import PreviewMapScreen from './screens/PreviewMapScreen'
+import { GasConsumptionProvider  } from './screens/context/GasConsumptionProvider';
 // Create Stack Navigator
 const Stack = createNativeStackNavigator();
 
@@ -59,6 +60,7 @@ const App = () => {
 
   return (
     <Provider store={store}>
+      <GasConsumptionProvider> 
       <MapStyleProvider>
         <NavigationContainer
           initialState={initialState}  // Pass initial state from AsyncStorage
@@ -101,6 +103,7 @@ const App = () => {
           </Stack.Navigator>
         </NavigationContainer>
       </MapStyleProvider>
+      </GasConsumptionProvider>
     </Provider>
   );
 };

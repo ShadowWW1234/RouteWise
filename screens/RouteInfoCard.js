@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, Animated, Easing } from 'react-native';
 
-const RouteInfoCard = ({ destinationName, viaRoad, onAddStop, progress }) => {
+const RouteInfoCard = ({ destinationName, viaRoad, onAddStop, progress, congestionSegments = [] }) => {
     const [lineWidth, setLineWidth] = useState(0);
     const animatedValue = useRef(new Animated.Value(0)).current;
 
@@ -9,19 +9,18 @@ const RouteInfoCard = ({ destinationName, viaRoad, onAddStop, progress }) => {
     const clampedProgress = Math.min(Math.max(progress, 0), 1);
 
     useEffect(() => {
-        // Animate the width of the traversed line and car icon
-        Animated.timing(animatedValue, {
-            toValue: clampedProgress,
-            duration: 500, // Adjust for smoothness
-            easing: Easing.out(Easing.ease),
-            useNativeDriver: false, // Width cannot be animated with native driver
-        }).start();
+      Animated.timing(animatedValue, {
+          toValue: clampedProgress,
+          duration: 500, // Adjust for smoothness
+          easing: Easing.out(Easing.ease),
+          useNativeDriver: false,
+      }).start();
     }, [clampedProgress]);
 
-    // Interpolate progress for the car icon's translateX position
+    // Interpolate progress for the car icon position
     const translateX = animatedValue.interpolate({
         inputRange: [0, 1],
-        outputRange: [0, lineWidth - 24], // 24 is the car icon width
+        outputRange: [0, lineWidth - 40], // Adjust for car icon size (40 is icon width)
     });
 
     return (
@@ -40,13 +39,19 @@ const RouteInfoCard = ({ destinationName, viaRoad, onAddStop, progress }) => {
                 style={styles.timelineContainer}
                 onLayout={(event) => {
                     const { width } = event.nativeEvent.layout;
-                    setLineWidth(width); // Capture the line width on layout
+                    setLineWidth(width);
                 }}
             >
-                {/* Remaining Route Line */}
+                
+                {/* Background Line (unfilled) */}
                 <View style={styles.routeLine} />
-
-                {/* Traversed Route Line */}
+      {/* Car Icon (positioned above the line) */}
+      {lineWidth > 0 && (
+                    <Animated.View style={[styles.carIcon, { transform: [{ translateX }] }]}>
+                        <Image source={require('../assets/car.png')} style={styles.image} />
+                    </Animated.View>
+                )}
+                {/* Filled Line (traversed route in blue) */}
                 {lineWidth > 0 && (
                     <Animated.View
                         style={[
@@ -54,22 +59,29 @@ const RouteInfoCard = ({ destinationName, viaRoad, onAddStop, progress }) => {
                             {
                                 width: animatedValue.interpolate({
                                     inputRange: [0, 1],
-                                    outputRange: [0, lineWidth], // Animate the width based on progress
+                                    outputRange: [0, lineWidth],
                                 }),
                             },
                         ]}
                     />
                 )}
 
-                {/* Moving Car Icon */}
-                {lineWidth > 0 && (
-                    <Animated.View style={[styles.marker, { transform: [{ translateX }] }]}>
-                        <Image
-                            source={require('../assets/car.png')} // Ensure this path is correct
-                            style={styles.image}
-                        />
-                    </Animated.View>
-                )}
+                {/* Congestion Segments */}
+                {congestionSegments.map((segment, index) => (
+                    <View
+                        key={index}
+                        style={[
+                            styles.congestionSegment,
+                            {
+                                width: `${segment.percentage * 100}%`, // Segment width based on percentage
+                                left: `${segment.start * 100}%`, // Start position of congestion
+                                backgroundColor: segment.color,
+                            },
+                        ]}
+                    />
+                ))}
+
+          
 
                 {/* Destination Icon */}
                 <View style={styles.destinationIcon}>
@@ -77,7 +89,7 @@ const RouteInfoCard = ({ destinationName, viaRoad, onAddStop, progress }) => {
                 </View>
             </View>
 
-            {/* Optional: Display Progress Percentage */}
+            {/* Display Progress Percentage */}
             <Text style={styles.progressText}>{Math.round(clampedProgress * 100)}% Completed</Text>
 
             {/* Add Stop Button */}
@@ -90,7 +102,7 @@ const RouteInfoCard = ({ destinationName, viaRoad, onAddStop, progress }) => {
 
 const styles = StyleSheet.create({
     cardInfoContainer: {
-        backgroundColor: '#f0f0f0',
+        backgroundColor: '#ffffff',
         padding: 20,
         width: '90%',
         borderRadius: 10,
@@ -98,7 +110,7 @@ const styles = StyleSheet.create({
         top: 90,
         alignSelf: 'center',
         alignItems: 'center',
-        shadowColor: "#000",
+        shadowColor: '#000',
         shadowOffset: {
             width: 0,
             height: 2,
@@ -118,45 +130,53 @@ const styles = StyleSheet.create({
         marginTop: 5,
     },
     spacer: {
-        height: 20,
+        height: 15,
     },
     timelineContainer: {
         width: '100%',
-        height: 40, // Adjust height based on icon size
+        height: 20, // Progress bar height
         justifyContent: 'center',
         position: 'relative',
+        backgroundColor: '#e0e0e0', // Light gray background for the entire progress bar
+        borderRadius: 10,
+        overflow: 'hidden', // Ensure elements stay within the progress bar
     },
     routeLine: {
         position: 'absolute',
         left: 0,
         right: 0,
         height: 8,
-        borderWidth: 1,
-        borderColor: '#d3d3d3', // Light gray dashed line
+        backgroundColor: '#d3d3d3', // Light gray for the untraversed route
         borderRadius: 10,
     },
     traversedLine: {
         position: 'absolute',
         left: 0,
-        height: 8,
+        height: 18,
         backgroundColor: '#007AFF', // Blue for traversed route
         borderRadius: 10,
     },
-    marker: {
+    congestionSegment: {
         position: 'absolute',
-        top: -10, // Adjust to align with the line
-        width: 30,
-        height: 30,
+        top: 0,
+        height: '100%', // Full height of the progress bar
+        borderRadius: 10,
+    },
+    carIcon: {
+        position: 'absolute',
+        top: -12, // Adjust to place the car icon above the line
+        left:-15,
+        zIndex:9999
     },
     destinationIcon: {
         position: 'absolute',
         right: 0,
-        top: -10, // Adjust to align with the line
+        top: -15, // Adjust to align with the car icon
     },
     progressText: {
         fontSize: 14,
         color: 'gray',
-        marginTop: 8,
+        marginTop: 10,
     },
     addStopButton: {
         marginTop: 15,
@@ -166,9 +186,9 @@ const styles = StyleSheet.create({
         color: '#007AFF',
     },
     image: {
-        width: 30, // Set the width of the car icon image
-        height: 30, // Set the height of the car icon image
-        resizeMode: 'contain', // Ensure the image scales properly
+        width: 40, // Car icon width
+        height: 40, // Car icon height
+        resizeMode: 'contain',
     },
 });
 

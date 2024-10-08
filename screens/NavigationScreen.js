@@ -11,45 +11,14 @@ import RouteInfoCard from './RouteInfoCard';
 import { MAPBOX_API_TOKEN } from '@env'; 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import CalloutBubble from './component/CalloutBubble';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 
+import { GasConsumptionContext } from './context/GasConsumptionProvider';
 import { debounce } from 'lodash';
 
 MapboxGL.setAccessToken(MAPBOX_API_TOKEN);
 
  
-
-// Helper function to map instructions to Ionicons
-const getManeuverIcon = (instruction) => {
-  if (instruction.toLowerCase().includes('right')) {
-    return "arrow-forward-outline";
-  } else if (instruction.toLowerCase().includes('left')) {
-    return "arrow-back-outline";
-  } else if (instruction.toLowerCase().includes('straight')) {
-    return "arrow-up-outline";
-  }
-  return "navigate-outline"; // Default icon
-};
- 
-
-const calculateProgress = (currentPosition, fullRoute) => {
-  if (!currentPosition || !fullRoute || fullRoute.length === 0) return 0;
-
-  const userPoint = turf.point(currentPosition);
-  const routeLine = turf.lineString(fullRoute);
-  const snapped = turf.nearestPointOnLine(routeLine, userPoint, { units: 'meters' });
-
-  // Slice the route from the start to the snapped point
-  const slicedRoute = turf.lineSlice(turf.point(fullRoute[0]), snapped, routeLine);
-
-  // Calculate the distance along the route up to the current position
-  const distanceAlongRoute = turf.length(slicedRoute, { units: 'meters' });
-
-  // Calculate the total distance of the route
-  const totalDistance = turf.length(routeLine, { units: 'meters' });
-
-  return totalDistance === 0 ? 0 : distanceAlongRoute / totalDistance;
-};
-
 
 const saveRouteToStorage = async (routeData, instructions, eta, currentRoadName) => {
   try {
@@ -101,10 +70,43 @@ const loadRouteFromStorage = async () => {
   }
 };
 
+
+// Helper function to map instructions to Ionicons
+const getManeuverIcon = (instruction) => {
+  if (instruction.toLowerCase().includes('right')) {
+    return "arrow-forward-outline";
+  } else if (instruction.toLowerCase().includes('left')) {
+    return "arrow-back-outline";
+  } else if (instruction.toLowerCase().includes('straight')) {
+    return "arrow-up-outline";
+  }
+  return "navigate-outline"; // Default icon
+};
+ 
+
+const calculateProgress = (currentPosition, fullRoute) => {
+  if (!currentPosition || !fullRoute || fullRoute.length === 0) return 0;
+
+  const userPoint = turf.point(currentPosition);
+  const routeLine = turf.lineString(fullRoute);
+  const snapped = turf.nearestPointOnLine(routeLine, userPoint, { units: 'meters' });
+
+  // Slice the route from the start to the snapped point
+  const slicedRoute = turf.lineSlice(turf.point(fullRoute[0]), snapped, routeLine);
+
+  // Calculate the distance along the route up to the current position
+  const distanceAlongRoute = turf.length(slicedRoute, { units: 'meters' });
+
+  // Calculate the total distance of the route
+  const totalDistance = turf.length(routeLine, { units: 'meters' });
+
+  return totalDistance === 0 ? 0 : distanceAlongRoute / totalDistance;
+};
+
 const NavigationScreen = ({ route, navigation }) => {
   const mapRef = useRef(null);  // Properly initialize mapRef
 
-  const { origin, destination, stops: initialStops = [], route: selectedRoute, destinationName } = route.params || {};
+  const { origin, destination, stops: initialStops = [], route: selectedRoute, destinationName,  estimatedFuelConsumption } = route.params || {};
   const [stops, setStops] = useState(initialStops);
   const [currentPosition, setCurrentPosition] = useState(null);
   const [traversedRoute, setTraversedRoute] = useState([]);
@@ -142,6 +144,7 @@ const NavigationScreen = ({ route, navigation }) => {
   const [routeProgress, setRouteProgress] = useState(0);
   const [snappedPosition, setSnappedPosition] = useState([0, 0]); // Default to [0, 0]
   const [isDestinationReached, setIsDestinationReached] = useState(false);
+  const { gasConsumption } = useContext(GasConsumptionContext);
 
 
    // Threshold to trigger the "Destination Reached" event
@@ -248,7 +251,10 @@ const NavigationScreen = ({ route, navigation }) => {
 
     return distanceFromRoute > 30;
   };
-
+  const congestionSegment = [
+    { percentage: 0.1, start: 0.2, color: 'orange' }, // 10% of the route starting at 20% of the total route
+    { percentage: 0.15, start: 0.45, color: 'red' },  // 15% of the route starting at 45%
+  ];
   useEffect(() => {
     // When remaining duration changes, recalculate ETA
     if (remainingDuration > 0) {
@@ -947,13 +953,17 @@ const formatDuration = (durationInSeconds) => {
               <Ionicons name="power" size={30} color="red" />
             </TouchableOpacity>
             <Text style={styles.summaryTitle}>{formatTime(eta)}</Text>
+            
             <Text style={styles.summaryText}>
-              {remainingDistance ? `${remainingDistance} km` : '...'} | {formatDuration(remainingDuration)}
+            <MaterialCommunityIcons name="gas-station" size={24} color="red"/> {estimatedFuelConsumption} L  
+            <MaterialCommunityIcons name="road" size={20} color="blue"/>{remainingDistance ? `${remainingDistance} km` : '...'} <MaterialCommunityIcons name="bus-clock" size={20} color="blue"/>{formatDuration(remainingDuration)}
             </Text>
+           
+   
             <RouteInfoCard
               destinationName={destinationName}
               viaRoad={currentRoadName}
-              congestionLevels={congestionLevels}
+              congestionSegments={congestionSegment}
               onAddStop={handleAddStop}
               progress={routeProgress} // Pass the progress here
             />

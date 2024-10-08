@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StyleSheet, TextInput, View, Modal, SafeAreaView, TouchableOpacity, FlatList, Text, Button } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { debounce } from 'lodash';
@@ -10,7 +10,7 @@ import {  MAPBOX_API_TOKEN } from '@env';
 import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
 
  
-const SearchBar = ({ modalVisible, toggleModal }) => {
+const SearchBar = ({ modalVisible, toggleModal, gasConsumption }) => {
   const [originText, setOriginText] = useState('Select manual location'); // Default text for origin
   const [searchText, setSearchText] = useState(''); // For destination search input
   const [searchResults, setSearchResults] = useState([]);
@@ -53,7 +53,10 @@ const SearchBar = ({ modalVisible, toggleModal }) => {
     setDestinationSearchText('');
     setDestinationSearchResults([]);
   };
-
+// SearchBar.js
+useEffect(() => {
+  console.log('SearchBar - gasConsumption:', gasConsumption);
+}, [gasConsumption]);
   // Function to fetch places for origin or destination search
   const fetchPlaces = debounce(async (text, isOrigin = false) => {
     if (text.length > 2) {
@@ -258,6 +261,7 @@ const SearchBar = ({ modalVisible, toggleModal }) => {
       toggleModal={() => setDestinationModalVisible(false)}
       origin={selectedOrigin}
       destination={selectedDestination}
+      gasConsumption={gasConsumption}
     />
   )}
 </SafeAreaView>

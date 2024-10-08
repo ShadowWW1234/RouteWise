@@ -34,7 +34,7 @@ const options = [
   { id: '3', label: 'Fastest Route', icon: 'road-variant', toggle: true },
 ];
 
-const VehicleTypeSelection = ({ modalVisible, toggleModal }) => {
+const VehicleTypeSelection = ({ modalVisible, toggleModal,onSaveGasConsumption  }) => {
   const [selectedVehicleIndex, setSelectedVehicleIndex] = useState(0);
   const [fastestRouteEnabled, setFastestRouteEnabled] = useState(true); // Default to true
   const scrollRef = useRef(null);
@@ -44,40 +44,55 @@ const VehicleTypeSelection = ({ modalVisible, toggleModal }) => {
   const SPACING = (width - ITEM_WIDTH) / 2;
 
   const [isGasConsumptionModalVisible, setGasConsumptionModalVisible] = useState(false);
-  const [gasConsumption, setGasConsumption] = useState('');
-  // Restore the saved vehicle when the modal opens
-  useEffect(() => {
-    const loadSelectedVehicle = async () => {
+  const [gasConsumption, setGasConsumption] = useState(''); // Gas consumption input
+
+   // Load previously saved gas consumption and vehicle selection when the modal opens
+   useEffect(() => {
+    const loadSavedData = async () => {
       if (modalVisible) {
         try {
-          const savedIndex = await AsyncStorage.getItem('selectedVehicleIndex');
-          if (savedIndex !== null) {
-            setSelectedVehicleIndex(Number(savedIndex));
-            scrollRef.current?.scrollTo({ x: Number(savedIndex) * ITEM_WIDTH, animated: true });
+          const savedVehicleIndex = await AsyncStorage.getItem('selectedVehicleIndex');
+          const savedGasConsumption = await AsyncStorage.getItem('gasConsumption');
+
+          if (savedVehicleIndex !== null) {
+            setSelectedVehicleIndex(Number(savedVehicleIndex));
+            // Scroll to the previously selected vehicle
+            scrollRef.current?.scrollTo({ x: Number(savedVehicleIndex) * ITEM_WIDTH, animated: true });
+          }
+
+          if (savedGasConsumption !== null) {
+            setGasConsumption(savedGasConsumption); // Load saved gas consumption into state
           }
         } catch (error) {
-          console.error('Failed to load the selected vehicle from AsyncStorage:', error);
+          console.error('Failed to load saved data from AsyncStorage:', error);
         }
       }
     };
-    loadSelectedVehicle();
-  }, [modalVisible]);
 
+    loadSavedData();
+  }, [modalVisible]);
+  
   const onScroll = (event) => {
     const xOffset = event.nativeEvent.contentOffset.x;
     const index = Math.round(xOffset / ITEM_WIDTH);
     setSelectedVehicleIndex(index);
   };
 
+  // Handle saving the selected vehicle and gas consumption
   const handleSave = async () => {
     try {
+      // Save selected vehicle index and gas consumption to AsyncStorage
       await AsyncStorage.setItem('selectedVehicleIndex', selectedVehicleIndex.toString());
-      toggleModal();
+      await AsyncStorage.setItem('gasConsumption', gasConsumption);
+
+      // Update gas consumption in the parent component via context
+      onSaveGasConsumption(parseFloat(gasConsumption));
+
+      toggleModal(); // Close the modal after saving
     } catch (error) {
-      console.error('Failed to save the selected vehicle:', error);
+      console.error('Failed to save the selected vehicle or gas consumption:', error);
     }
   };
-
 
 const [preferredGasType, setPreferredGasType] = useState('Diesel'); // Default gas type
 const [isGasTypeModalVisible, setGasTypeModalVisible] = useState(false); // State for modal visibility

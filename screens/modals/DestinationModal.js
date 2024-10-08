@@ -7,8 +7,10 @@ import { MapStyleContext } from '../context/MapStyleContext';
 import { useNavigation } from "@react-navigation/native";
 import {  MAPBOX_API_TOKEN } from '@env';
 import Geolocation from '@react-native-community/geolocation';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
+import { GasConsumptionContext } from '../context/GasConsumptionProvider';
 
-const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch}) => {
+const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch }) => {
     const dispatch = useDispatch();
     const [routes, setRoutes] = useState([]);
     const [selectedRouteIndex, setSelectedRouteIndex] = useState(0);
@@ -21,8 +23,9 @@ const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch
     const [isPreviewMode, setIsPreviewMode] = useState(false); // New state for preview mode
     const [userLocation, setUserLocation] = useState(null); // State to store user's current location
     const previewDistanceThreshold = 1; // Set a threshold (in km) to switch to preview mode
-
-
+    const [estimatedFuelConsumption, setEstimatedFuelConsumption] = useState(null);
+    const { gasConsumption } = useContext(GasConsumptionContext);
+   
     const navigation = useNavigation();
  
     const resetState = () => {
@@ -30,6 +33,8 @@ const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch
         setSelectedRouteIndex(0);
     };
 
+
+    
     useEffect(() => {
         // Try to get the user's current location
         Geolocation.getCurrentPosition(
@@ -48,7 +53,40 @@ const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch
         );
     }, []);
 
+ 
+    useEffect(() => {
+        const loadVehicleData = async () => {
+            try {
+                const savedGasConsumption = await AsyncStorage.getItem('gasConsumption');
+                console.log('Retrieved gasConsumption from storage:', savedGasConsumption);
+                if (savedGasConsumption) {
+                    const parsedGasConsumption = parseFloat(savedGasConsumption);
+                    setGasConsumption(parsedGasConsumption); // Correctly set gasConsumption
+                    console.log('gasConsumption state updated:', parsedGasConsumption);
+                } else {
+                    console.log('No gasConsumption value found in storage.');
+                }
+            } catch (error) {
+                console.error('Failed to load gas consumption:', error);
+            }
+        };
     
+        if (visible) {
+            loadVehicleData();
+        }
+    }, [visible]);
+    
+  
+    useEffect(() => {
+        if (routes.length > 0 && gasConsumption) {
+          const selectedRoute = routes[selectedRouteIndex];
+          const distanceInKm = selectedRoute.distance / 1000;
+          const fuelUsed = (distanceInKm / gasConsumption).toFixed(2);
+          setEstimatedFuelConsumption(fuelUsed);
+        }
+      }, [routes, selectedRouteIndex, gasConsumption]);
+    
+
     useEffect(() => {
         if (userLocation && origin) {
             const distanceToOrigin = calculateDistance(
@@ -83,11 +121,7 @@ const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch
         }
     };
     
-    
-    
-    
-    
-    
+ 
 
     const handleCloseModal = () => {
         resetState();  // Reset local state in DestinationModal
@@ -120,11 +154,12 @@ const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch
                     congestionNumeric: route.legs[0].annotation.congestion_numeric,
                     steps: route.legs[0].steps,  // Add steps for turn-by-turn navigation
                     duration: route.duration,  // Extract duration (in seconds)
+                    distance: route.distance,
                 }));
     
                 setRoutes(mapboxRoutes);  // Set the fetched routes
                 setSelectedRouteIndex(0);  // Set the first route as selected by default
-                console.log('Routes set:', mapboxRoutes);
+              
             } else {
                 console.error('No routes found.');
             }
@@ -187,17 +222,17 @@ const fitToMarkers = () => {
     
         // Extract the destination name
         const destinationName = destination.description.split(',')[0];
-        console.log('Destination Name:', destinationName);
-
-        // Pass necessary data for navigation
-        navigation.navigate('NavigationScreen', {
-            origin,
-            destination,
-            route: selectedRoute,
-            congestionDistance: selectedRoute.congestionDistance || 0,
-            etaTime: selectedRoute.etaTime || 0,
-            destinationName
-        });
+       
+          // Pass necessary data for navigation, including estimatedFuelConsumption
+    navigation.navigate('NavigationScreen', {
+        origin,
+        destination,
+        route: selectedRoute,
+        congestionDistance: selectedRoute.congestionDistance || 0,
+        etaTime: selectedRoute.etaTime || 0,
+        destinationName,
+        estimatedFuelConsumption, // Include this line
+    });
     };
     
 
@@ -219,13 +254,7 @@ const fitToMarkers = () => {
     };
     
 
-// useEffect(() => {
-//     if (origin && destination) {
-//         fetchRoutes();
-//     } else {
-//        // console.error('Invalid origin or destination:', origin, destination);
-//     }
-// }, [origin, destination]);
+ 
 useEffect(() => {
     if (visible && origin && destination && cameraRef.current) {
         // Set initial camera position
@@ -251,27 +280,25 @@ useEffect(() => {
     if (routes.length > 0 && selectedRouteIndex >= 0) {
         const selectedRoute = routes[selectedRouteIndex];
         if (selectedRoute && selectedRoute.coordinates.length > 0) {
-            // Calculate the distance for the selected route using the coordinates
             const routeDistance = selectedRoute.coordinates.reduce((acc, coord, index) => {
                 if (index + 1 < selectedRoute.coordinates.length) {
-                    const [lat1, lon1] = coord;
-                    const [lat2, lon2] = selectedRoute.coordinates[index + 1];
+                    const [lon1, lat1] = coord; // Correct order
+                    const [lon2, lat2] = selectedRoute.coordinates[index + 1];
                     return acc + calculateDistance(lat1, lon1, lat2, lon2);
                 }
                 return acc;
             }, 0);
 
-            // Set the distance if valid
             if (!isNaN(routeDistance)) {
-                setDistance(routeDistance.toFixed(2)); // Update distance state
+                setDistance(routeDistance.toFixed(2));
             } else {
-                setDistance("N/A"); // Reset to "N/A" if calculation fails
+                setDistance("N/A");
             }
         } else {
-            setDistance("N/A"); // Reset to "N/A" if no coordinates
+            setDistance("N/A");
         }
     } else {
-        setDistance("N/A"); // Default to "N/A" if routes are empty
+        setDistance("N/A");
     }
 }, [routes, selectedRouteIndex]);
 
@@ -303,7 +330,7 @@ const handleGoNow = () => {
             return 'red'; // Very high congestion
         }
     };
-    
+   
     const shouldRenderSegment = (congestionValue) => {
         return congestionValue >= 2; // Only render moderate to heavy traffic
     };
@@ -455,23 +482,27 @@ const handleGoNow = () => {
     <>
       {/* Title and Distance aligned horizontally */}
       <View style={styles.row}>
-        <View style={styles.leftColumn}>
-          <Text style={styles.title}>
+    <View style={styles.leftColumn}>
+        <Text style={styles.title}>
             {destination.description.split(',')[0]}
-          </Text>
-        </View>
-        <View style={styles.rightColumn}>
-          {distance && !isNaN(distance) ? (
+        </Text>
+    </View>
+    <View style={styles.rightColumn}>
+        <Text  style={styles.distanceText}>
+        <MaterialCommunityIcons name="gas-station" size={15}/>: {estimatedFuelConsumption ? `${estimatedFuelConsumption} L` : '...'}
+        </Text>
+        {distance && !isNaN(distance) ? (
             <Text style={styles.distanceText}>
-              {distance} km
+                {distance} km
             </Text>
-          ) : (
+        ) : (
             <Text style={styles.distanceText}>
-              Distance: N/A
+                Distance: N/A
             </Text>
-          )}
-        </View>
-      </View>
+        )}
+    </View>
+</View>
+
 
       {/* Sub-location and Time/ETA aligned horizontally */}
       <View style={styles.row}>

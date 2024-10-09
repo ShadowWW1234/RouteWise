@@ -2,27 +2,11 @@ apply plugin: "com.android.application"
 apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
+ 
 /**
  * This is the configuration block to customize your React Native Android app.
- * By default you don't need to apply any configuration, just uncomment the lines you need.
  */
 react {
-    /* Folders */
-    //   The root of your project, i.e. where "package.json" lives. Default is '../..'
-    // root = file("../../")
-    //   The folder where the react-native NPM package is. Default is ../../node_modules/react-native
-    // reactNativeDir = file("../../node_modules/react-native")
-    //   The folder where the react-native Codegen package is. Default is ../../node_modules/@react-native/codegen
-    // codegenDir = file("../../node_modules/@react-native/codegen")
-    //   The cli.js file which is the React Native CLI entrypoint. Default is ../../node_modules/react-native/cli.js
-    // cliFile = file("../../node_modules/react-native/cli.js")
-
-    /* Variants */
-    //   The list of variants to that are debuggable. For those we're going to
-    //   skip the bundling of the JS bundle and the assets. By default is just 'debug'.
-    //   If you add flavors like lite, prod, etc. you'll have to list your debuggableVariants.
-    // debuggableVariants = ["liteDebug", "prodDebug"]
-
     /* Autolinking */
     autolinkLibrariesWithApp()
 }
@@ -34,9 +18,6 @@ def enableProguardInReleaseBuilds = false
 
 /**
  * The preferred build flavor of JavaScriptCore (JSC)
- *
- * For example, to use the international variant, you can use:
- * `def jscFlavor = 'org.webkit:android-jsc-intl:+'`
  */
 def jscFlavor = 'org.webkit:android-jsc:+'
 
@@ -66,12 +47,11 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
-            minifyEnabled enableProguardInReleaseBuilds
-            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
-        }
+        signingConfig signingConfigs.debug
+        minifyEnabled false // Disable ProGuard
+        shrinkResources false // Disable resource shrinking
+        proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+    }
     }
 
     // Custom APK renaming based on variant
@@ -97,11 +77,19 @@ dependencies {
     } else {
         implementation jscFlavor
     }
+
+    // Import the Firebase BoM (Bill of Materials)
+    implementation platform('com.google.firebase:firebase-bom:33.4.0')
+
+    // Add Firebase dependencies
+    implementation 'com.google.firebase:firebase-analytics'
+    // Add any other Firebase dependencies you need:
+    // implementation 'com.google.firebase:firebase-auth'
+    // implementation 'com.google.firebase:firebase-firestore'
 }
 
 project.ext.vectoricons = [
-    iconFontNames: ['Ionicons.ttf', 'AntDesign.ttf'],
-    iconFontNames: [ 'MaterialCommunityIcons.ttf' ] 
+    iconFontNames: ['Ionicons.ttf', 'AntDesign.ttf', 'MaterialCommunityIcons.ttf']
 ]
 
 project.ext.react = [
@@ -109,3 +97,5 @@ project.ext.react = [
 ]
 
 apply from: "../../node_modules/react-native-vector-icons/fonts.gradle"
+
+apply plugin: "com.google.gms.google-services"

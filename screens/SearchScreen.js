@@ -1,5 +1,5 @@
-import { StyleSheet, Text, View, SafeAreaView, TouchableOpacity, TextInput, Modal } from 'react-native';
-import React, { useState, useEffect,useContext } from 'react';
+import { StyleSheet, Text, View, SafeAreaView, TouchableOpacity, TextInput } from 'react-native';
+import React, { useState, useEffect, useContext } from 'react';
 import tw from "tailwind-react-native-classnames";  
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import VehicleTypeSelection from './modals/VehicleTypeSelection';
@@ -7,160 +7,174 @@ import SearchBar from '../screens/modals/SearchBar';
 import MapScreen from '../screens/MapScreen';
 import SideBar from '../screens/SideBar';
 import DestinationModal from '../screens/modals/DestinationModal';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { GasConsumptionContext } from '../screens/context/GasConsumptionProvider';
-
+import SQLite from 'react-native-sqlite-storage';
 
 const SearchScreen = () => {
- 
-    const [isSearchModalVisible, setSearchModalVisible] = useState(false);
-    const [isDestinationModalVisible, setDestinationModalVisible] = useState(false);
-    const [selectedDestination, setSelectedDestination] = useState(null);
-    const [selectedOrigin, setSelectingOrigin] = useState(null);
-  
-    const { gasConsumption ,setGasConsumption } = useContext(GasConsumptionContext);
-    const [modalVisible, setModalVisible] = useState(!gasConsumption); // Show modal if gasConsumption is not set
-  
-    
-    // Function to toggle the DestinationModal
-    const toggleDestinationModal = () => setDestinationModalVisible(!isDestinationModalVisible);
-    
-     // Define resetSearch function
-     const resetSearch = () => {
-        setSearchModalVisible(false); // Close the search modal
-        console.log("resetSearch function is called"); // Debugging log
-    };
-    
-    useEffect(() => {
-        const loadGasConsumption = async () => {
-          try {
-            const savedGasConsumption = await AsyncStorage.getItem('gasConsumption');
-            if (savedGasConsumption) {
-              const parsedGasConsumption = parseFloat(savedGasConsumption);
-              if (!isNaN(parsedGasConsumption)) {
-                setGasConsumption(parsedGasConsumption);
-                console.log('ParentScreen - gasConsumption loaded:', parsedGasConsumption);
-              }
-            }
-          } catch (error) {
-            console.error('Failed to load gas consumption:', error);
-          }
-        };
-    
-        loadGasConsumption();
-      }, []);
-    // Save the modal state when it's updated
-    useEffect(() => {
-        const saveModalState = async () => {
-            try {
-                await AsyncStorage.setItem('MODAL_STATE', JSON.stringify(isDestinationModalVisible));
-            } catch (e) {
-                console.error('Failed to save modal state.', e);
-            }
-        };
-        saveModalState();
-    }, [isDestinationModalVisible]);
+  const [isSearchModalVisible, setSearchModalVisible] = useState(false);
+  const [isDestinationModalVisible, setDestinationModalVisible] = useState(false);
+  const [selectedDestination, setSelectedDestination] = useState(null);
+  const [selectedOrigin, setSelectingOrigin] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-    // Load the modal state when the component mounts
-    useEffect(() => {
-        const loadModalState = async () => {
-            try {
-                const savedState = await AsyncStorage.getItem('MODAL_STATE');
-                if (savedState !== null) {
-                    setDestinationModalVisible(JSON.parse(savedState));
+  const { gasConsumption, updateGasConsumption } = useContext(GasConsumptionContext);
+  const [modalVisible, setModalVisible] = useState(false);
+
+  // SQLite database setup
+  const db = SQLite.openDatabase(
+    { name: 'gasConsumption.db', location: 'default' },
+    () => { console.log('Database opened'); },
+    error => { console.log('Error opening database:', error); }
+  );
+
+  useEffect(() => {
+    const createTableAndLoadData = () => {
+      db.transaction(txn => {
+        // Create the table if it doesn't exist
+        txn.executeSql(
+          `CREATE TABLE IF NOT EXISTS gas_data (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            consumption REAL
+          )`,
+          [],
+          () => {
+            console.log('Table created or already exists.');
+            
+            // Check if there is any data
+            txn.executeSql(
+              'SELECT consumption FROM gas_data WHERE id = 1',
+              [],
+              (tx, results) => {
+                if (results.rows.length > 0) {
+                  const consumptionValue = results.rows.item(0).consumption;
+                  updateGasConsumption(consumptionValue); // Use updateGasConsumption to set the value
+                  setModalVisible(false); // Hide modal after loading the value
+                } else {
+                  // If no data exists, insert a default value or keep modal open
+                  txn.executeSql(
+                    'INSERT INTO gas_data (id, consumption) VALUES (1, 0)',
+                    [],
+                    () => {
+                      console.log('Initial data inserted.');
+                      setModalVisible(true); // Show modal to let the user set consumption
+                    },
+                    error => {
+                      console.error('Failed to insert initial data:', error);
+                    }
+                  );
                 }
-            } catch (e) {
-                console.error('Failed to load modal state.', e);
-            }
-        };
-        loadModalState();
-    }, []);
-    useEffect(() => {
-        console.log('ParentScreen - gasConsumption:', gasConsumption);
-      }, [gasConsumption]);
-      
-      // Add a useEffect to log when selectedDestination changes
-      useEffect(() => {
-        console.log('ParentScreen - selectedDestination:', selectedDestination);
-        console.log('ParentScreen - gasConsumption after selecting destination:', gasConsumption);
-      }, [selectedDestination]);
-      
-    // Handle place selection from the SearchBar
-    const handlePlaceSelect = (origin, destination) => {
-        setSelectingOrigin(origin);
-        setSelectedDestination(destination);
-        setSearchModalVisible(false);
-        setDestinationModalVisible(true);
-        console.log(destination);
+                setIsLoading(false); // Stop loading after the data check
+              },
+              error => {
+                console.error('Failed to load gas consumption:', error);
+                setIsLoading(false); // Stop loading even on error
+              }
+            );
+          },
+          error => {
+            console.error('Failed to create table:', error);
+            setIsLoading(false); // Stop loading on table creation failure
+          }
+        );
+      });
     };
 
-    // Function to toggle the search modal
-    const toggleSearchModal = () => {
-        setSearchModalVisible(!isSearchModalVisible);
-    };
+    createTableAndLoadData();
+  }, []);
 
-    // Function to toggle the vehicle selection modal
-    const toggleModal = () => {
-        setModalVisible(!modalVisible);
-    };
+  // Handle place selection from the SearchBar
+  const handlePlaceSelect = (origin, destination) => {
+    setSelectingOrigin(origin);
+    setSelectedDestination(destination);
+    setSearchModalVisible(false);
+    setDestinationModalVisible(true);
+    console.log('Destination selected:', destination);
+  };
 
+  // Toggle search modal
+  const toggleSearchModal = () => {
+    setSearchModalVisible(!isSearchModalVisible);
+  };
+
+  // Toggle destination modal
+  const toggleDestinationModal = () => {
+    setDestinationModalVisible(!isDestinationModalVisible);
+  };
+
+  // Toggle vehicle selection modal
+  const toggleModal = () => {
+    setModalVisible(!modalVisible);
+  };
+
+  // Loading screen while fetching data
+  if (isLoading) {
     return (
-        <SafeAreaView style={tw`flex-1 bg-white`}>
-            <View style={tw`flex-row flex-1`}>
-                <SideBar />
-                <MapScreen destination={selectedDestination} />
-            </View>
-
-            {/* Vehicle Type Selection Button */}
-            <View style={styles.overlayContainer}>
-                <TouchableOpacity style={styles.button} onPress={toggleModal}>
-                    <View style={styles.buttonContent}>
-                        <Text style={styles.buttonText}>Vehicle Type</Text>
-                        <Ionicons name="chevron-forward-outline" size={10} color="black" />
-                    </View>
-                </TouchableOpacity>
-                <GestureHandlerRootView style={{ flex: 1 }}>
-                <VehicleTypeSelection modalVisible={modalVisible} toggleModal={toggleModal} onSaveGasConsumption={setGasConsumption}/>
-                </GestureHandlerRootView>
-
-            </View>
-
-            {/* SearchBar Modal */}
-            <SearchBar 
-                modalVisible={isSearchModalVisible} 
-                toggleModal={toggleSearchModal}  
-                onPlaceSelect={handlePlaceSelect} 
-                gasConsumption={gasConsumption}
-            />
-
-            {/* Search Bar Input */}
-            <View style={styles.searchBarContainer}>
-                <Ionicons name="search" size={24} color="black" style={styles.searchIcon} />
-                <TouchableOpacity onPress={toggleSearchModal} style={{ flex: 1 }}>
-                    <TextInput
-                        style={[styles.searchBarInput]}
-                        placeholder="Where to go?"
-                        editable={false}
-                        placeholderTextColor="gray"
-                    />
-                </TouchableOpacity>
-                <TouchableOpacity>
-                    <Ionicons name="mic" size={24} color="white" style={styles.micIcon} />
-                </TouchableOpacity>
-            </View>
-
-            {/* DestinationModal */}
-            <DestinationModal 
-                visible={isDestinationModalVisible}
-                toggleModal={toggleDestinationModal}
-                destination={selectedDestination}
-                origin={selectedOrigin}
-                resetSearch={resetSearch}  // Pass resetSearch
-                gasConsumption={gasConsumption}
-            />
-        </SafeAreaView>
+      <View style={styles.loadingContainer}>
+        <Text>Loading...</Text>
+      </View>
     );
+  }
+
+  return (
+    <SafeAreaView style={tw`flex-1 bg-white`}>
+      <View style={tw`flex-row flex-1`}>
+        <SideBar />
+        <MapScreen destination={selectedDestination} />
+      </View>
+
+      {/* Vehicle Type Selection Button */}
+      <View style={styles.overlayContainer}>
+        <TouchableOpacity style={styles.button} onPress={toggleModal}>
+          <View style={styles.buttonContent}>
+            <Text style={styles.buttonText}>Vehicle Type</Text>
+            <Ionicons name="chevron-forward-outline" size={10} color="black" />
+          </View>
+        </TouchableOpacity>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <VehicleTypeSelection
+            modalVisible={modalVisible}
+            toggleModal={toggleModal}
+            onSaveGasConsumption={updateGasConsumption} // Use updateGasConsumption
+          />
+        </GestureHandlerRootView>
+      </View>
+
+      {/* SearchBar Modal */}
+      <SearchBar
+        modalVisible={isSearchModalVisible}
+        toggleModal={toggleSearchModal}
+        onPlaceSelect={handlePlaceSelect}
+        gasConsumption={gasConsumption}
+      />
+
+      {/* Search Bar Input */}
+      <View style={styles.searchBarContainer}>
+        <Ionicons name="search" size={24} color="black" style={styles.searchIcon} />
+        <TouchableOpacity onPress={toggleSearchModal} style={{ flex: 1 }}>
+          <TextInput
+            style={styles.searchBarInput}
+            placeholder="Where to go?"
+            editable={false}
+            placeholderTextColor="gray"
+          />
+        </TouchableOpacity>
+        <TouchableOpacity>
+          <Ionicons name="mic" size={24} color="white" style={styles.micIcon} />
+        </TouchableOpacity>
+      </View>
+
+      {/* DestinationModal */}
+      <DestinationModal
+        visible={isDestinationModalVisible}
+        toggleModal={toggleDestinationModal}
+        destination={selectedDestination}
+        origin={selectedOrigin}
+        resetSearch={() => setSearchModalVisible(false)} // Reset search when modal closes
+        gasConsumption={gasConsumption}
+      />
+    </SafeAreaView>
+  );
 };
 
 export default SearchScreen;

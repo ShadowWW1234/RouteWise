@@ -12,10 +12,61 @@ import {
   StyleSheet,
   Image,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import GasConsumptionModal from './GasConsumptionModal';
+import SQLite from 'react-native-sqlite-storage';
 
+SQLite.DEBUG(true);
+SQLite.enablePromise(false); // Set to false to handle sync mode
+
+// Open the SQLite database using synchronous mode
+const getDBConnection = () => {
+  const db = SQLite.openDatabase(
+    { name: 'vehicle_data.db', location: 'default' },
+    () => {
+      console.log('Database opened successfully');
+    },
+    (error) => {
+      console.error('Failed to open database:', error);
+    }
+  );
+  return db;
+};
+
+const initializeDatabase = () => {
+  const db = getDBConnection();
+  db.transaction(
+    (tx) => {
+      // Drop the table and recreate to ensure it uses the latest schema
+      tx.executeSql('DROP TABLE IF EXISTS VehicleSelection;', [], () => {
+        console.log('Dropped existing table');
+      });
+
+      // Create the table again
+      tx.executeSql(
+        `CREATE TABLE IF NOT EXISTS VehicleSelection (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          vehicleType TEXT,
+          gasConsumption REAL,  
+          gasType TEXT
+        );`,
+        [],
+        () => {
+          console.log('Table created successfully');
+        },
+        (error) => {
+          console.error('Error creating table:', error);
+        }
+      );
+    },
+    (error) => {
+      console.error('Transaction error:', error);
+    },
+    () => {
+      console.log('Transaction successful');
+    }
+  );
+};
 
 const { width } = Dimensions.get('window');
 
@@ -34,7 +85,7 @@ const options = [
   { id: '3', label: 'Fastest Route', icon: 'road-variant', toggle: true },
 ];
 
-const VehicleTypeSelection = ({ modalVisible, toggleModal,onSaveGasConsumption  }) => {
+const VehicleTypeSelection = ({ modalVisible, toggleModal, onSaveGasConsumption }) => {
   const [selectedVehicleIndex, setSelectedVehicleIndex] = useState(0);
   const [fastestRouteEnabled, setFastestRouteEnabled] = useState(true); // Default to true
   const scrollRef = useRef(null);
@@ -45,31 +96,61 @@ const VehicleTypeSelection = ({ modalVisible, toggleModal,onSaveGasConsumption  
 
   const [isGasConsumptionModalVisible, setGasConsumptionModalVisible] = useState(false);
   const [gasConsumption, setGasConsumption] = useState(''); // Gas consumption input
+  const [preferredGasType, setPreferredGasType] = useState('Diesel'); // Default gas type
+  const [isGasTypeModalVisible, setGasTypeModalVisible] = useState(false); // State for modal visibility
 
-   // Load previously saved gas consumption and vehicle selection when the modal opens
-   useEffect(() => {
-    const loadSavedData = async () => {
-      if (modalVisible) {
-        try {
-          const savedVehicleIndex = await AsyncStorage.getItem('selectedVehicleIndex');
-          const savedGasConsumption = await AsyncStorage.getItem('gasConsumption');
+  const loadSavedData = () => {
+    if (modalVisible) {
+      try {
+        const db = getDBConnection();
+        db.transaction((tx) => {
+          tx.executeSql('SELECT * FROM VehicleSelection ORDER BY id DESC LIMIT 1;', [], (tx, results) => {
+            console.log('Fetching saved data from database...');
+            
+            if (results.rows.length > 0) {
+              const row = results.rows.item(0);
+              console.log('Saved data found:', row);
+  
+              // Update state with fetched data
+              const vehicleIndex = vehicles.findIndex(v => v.type === row.vehicleType);
 
-          if (savedVehicleIndex !== null) {
-            setSelectedVehicleIndex(Number(savedVehicleIndex));
-            // Scroll to the previously selected vehicle
-            scrollRef.current?.scrollTo({ x: Number(savedVehicleIndex) * ITEM_WIDTH, animated: true });
-          }
-
-          if (savedGasConsumption !== null) {
-            setGasConsumption(savedGasConsumption); // Load saved gas consumption into state
-          }
-        } catch (error) {
-          console.error('Failed to load saved data from AsyncStorage:', error);
-        }
+              if (vehicleIndex !== -1) {
+                setSelectedVehicleIndex(vehicleIndex);  // Ensure correct vehicle index
+                console.log('Selected vehicle index:', vehicleIndex);
+  
+                // Programmatically scroll to the selected vehicle
+                if (scrollRef.current) {
+                  scrollRef.current.scrollTo({
+                    x: vehicleIndex * ITEM_WIDTH, // Calculate the scroll position
+                    animated: true,
+                  });
+                }
+              } else {
+                console.error('Vehicle type not found in the array:', row.vehicleType);
+              }
+  
+              setGasConsumption(row.gasConsumption);  // Gas consumption value from the database
+              setPreferredGasType(row.gasType);  // Gas type value from the database
+  
+              console.log('Vehicle type:', row.vehicleType);
+              console.log('Gas consumption:', row.gasConsumption);
+              console.log('Gas type:', row.gasType);
+            } else {
+              console.log('No saved data found in the database.');
+            }
+          });
+        });
+      } catch (error) {
+        console.error('Failed to load saved data from SQLite:', error);
       }
-    };
-
-    loadSavedData();
+    }
+  };
+  
+  
+  useEffect(() => {
+    if (modalVisible) {
+      loadSavedData(); // Load data when the modal becomes visible
+    }
   }, [modalVisible]);
   
   const onScroll = (event) => {
@@ -78,42 +159,66 @@ const VehicleTypeSelection = ({ modalVisible, toggleModal,onSaveGasConsumption  
     setSelectedVehicleIndex(index);
   };
 
-  // Handle saving the selected vehicle and gas consumption
-  const handleSave = async () => {
+  const handleSave = () => {
+    // Log the gasConsumption before saving
+    console.log('Gas consumption before saving vehicle:', gasConsumption);
+    
+    // Ensure gasConsumption is valid (use default value if not provided)
+    const validGasConsumption = !isNaN(parseFloat(gasConsumption)) && gasConsumption !== '' ? parseFloat(gasConsumption) : 0;
+    
+    console.log('Saving vehicle data with gas consumption:', {
+      vehicleType: vehicles[selectedVehicleIndex].type,
+      gasConsumption: validGasConsumption,
+      gasType: preferredGasType,
+    });
+    
     try {
-      // Save selected vehicle index and gas consumption to AsyncStorage
-      await AsyncStorage.setItem('selectedVehicleIndex', selectedVehicleIndex.toString());
-      await AsyncStorage.setItem('gasConsumption', gasConsumption);
-
-      // Update gas consumption in the parent component via context
-      onSaveGasConsumption(parseFloat(gasConsumption));
-
-      toggleModal(); // Close the modal after saving
+      const db = getDBConnection();
+      db.transaction((tx) => {
+        tx.executeSql(
+          'INSERT INTO VehicleSelection (vehicleType, gasConsumption, gasType) VALUES (?, ?, ?);',
+          [vehicles[selectedVehicleIndex].type, validGasConsumption, preferredGasType],
+          (tx, results) => {
+            console.log('Data successfully saved to database:', {
+              vehicleType: vehicles[selectedVehicleIndex].type,
+              gasConsumption: validGasConsumption,
+              gasType: preferredGasType,
+            });
+          },
+          (tx, error) => {
+            console.error('Failed to save vehicle data:', error);
+          }
+        );
+      });
+      toggleModal(); // Close the modal
     } catch (error) {
-      console.error('Failed to save the selected vehicle or gas consumption:', error);
+      console.error('Failed to save vehicle data to SQLite:', error);
     }
   };
+  
+  
+  // Function to open gas type modal
+  const openGasTypeModal = () => setGasTypeModalVisible(true);
+  const toggleGasConsumptionModal = () => {
+    setGasConsumptionModalVisible(!isGasConsumptionModalVisible);
+  };
 
-const [preferredGasType, setPreferredGasType] = useState('Diesel'); // Default gas type
-const [isGasTypeModalVisible, setGasTypeModalVisible] = useState(false); // State for modal visibility
+  const saveGasConsumption = (value) => {
+    const parsedValue = parseFloat(value);
+    if (!isNaN(parsedValue)) {
+      setGasConsumption(parsedValue.toString()); // Update the gas consumption in VehicleSelection
+      console.log('Gas consumption set to:', parsedValue);
+    } else {
+      setGasConsumption('0');  // If invalid, set to 0
+    }
+    toggleGasConsumptionModal(); // Close the modal after saving
+  };
+  
 
-// Function to open gas type modal
-const openGasTypeModal = () => setGasTypeModalVisible(true);
-const toggleGasConsumptionModal = () => {
-  setGasConsumptionModalVisible(!isGasConsumptionModalVisible);
-};
-
-const saveGasConsumption = () => {
-  // Logic to save the gas consumption data
-  console.log("Gas Consumption Saved: ", gasConsumption);
-  toggleGasConsumptionModal(); // Close modal after saving
-};
-
-// Function to handle gas type selection
-const selectGasType = (type) => {
-  setPreferredGasType(type);
-  setGasTypeModalVisible(false);
-};
+  const selectGasType = (type) => {
+    setPreferredGasType(type);
+    setGasTypeModalVisible(false);
+  };
 
   const renderVehicleOptions = () => {
     return vehicles.map((vehicle, index) => {
@@ -150,12 +255,11 @@ const selectGasType = (type) => {
     });
   };
 
-const renderOptionItem = ({ item }) => {
-  return (
+  const renderOptionItem = ({ item }) => (
     <TouchableOpacity
       onPress={() => {
-        if (item.id === '1') openGasTypeModal(); // For Preferred gas type
-        if (item.id === '2') toggleGasConsumptionModal(); // For Gas consumption
+        if (item.id === '1') openGasTypeModal();
+        if (item.id === '2') toggleGasConsumptionModal();
       }}
       style={styles.optionItem}
     >
@@ -164,90 +268,76 @@ const renderOptionItem = ({ item }) => {
       </View>
       <View style={styles.optionContent}>
         <Text style={styles.optionLabel}>{item.label}</Text>
-        {item.id === '1' && <Text style={styles.optionValue}>{preferredGasType}</Text>} 
-        {item.id === '2' && <Text style={styles.optionValue}>{gasConsumption} km/L</Text>} 
+        {item.id === '1' && <Text style={styles.optionValue}>{preferredGasType}</Text>}
+        {item.id === '2' && <Text style={styles.optionValue}>{gasConsumption} km/L</Text>}
       </View>
-      {item.toggle && (
-        <Switch
-          value={fastestRouteEnabled}
-          onValueChange={(value) => setFastestRouteEnabled(value)}
-        />
-      )}
     </TouchableOpacity>
   );
-};
-
-  
-  
 
   return (
     <>
-    <Modal animationType="slide" transparent={true} visible={modalVisible} onRequestClose={toggleModal}>
-      <View style={styles.modalContainer}>
-        <View style={styles.modalContent}>
-          <Text style={styles.title}>Vehicle Selection</Text>
+      <Modal animationType="slide" transparent={true} visible={modalVisible} onRequestClose={toggleModal}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.title}>Vehicle Selection</Text>
 
-          <ScrollView
-            ref={scrollRef}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            snapToInterval={ITEM_WIDTH}
-            decelerationRate="fast"
-            snapToAlignment="center"
-            contentContainerStyle={{ paddingHorizontal: SPACING }}
-            onScroll={onScroll}
-            scrollEventThrottle={16}
-          >
-            {renderVehicleOptions()}
-          </ScrollView>
+            <ScrollView
+  ref={scrollRef}
+  horizontal
+  showsHorizontalScrollIndicator={false}
+  snapToInterval={ITEM_WIDTH}  // Set the width of each item for snapping
+  decelerationRate="fast"
+  snapToAlignment="center"
+  contentContainerStyle={{ paddingHorizontal: SPACING }}
+  onScroll={onScroll}  // Ensure that onScroll updates the selected vehicle
+  scrollEventThrottle={16}
+>
+  {renderVehicleOptions()}
+</ScrollView>
 
-          <View style={styles.divider} />
+            <View style={styles.divider} />
 
-          <FlatList
-            data={options}
-            renderItem={renderOptionItem}
-            keyExtractor={(item) => item.id}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={styles.flatListContainer}
-          />
+            <FlatList
+              data={options}
+              renderItem={renderOptionItem}
+              keyExtractor={(item) => item.id}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={styles.flatListContainer}
+            />
 
-          <View style={styles.divider} />
+            <View style={styles.divider} />
 
-          <TouchableOpacity onPress={handleSave} style={styles.saveButton}>
-            <Text style={styles.saveButtonText}>OK</Text>
-          </TouchableOpacity>
+            <TouchableOpacity onPress={handleSave} style={styles.saveButton}>
+              <Text style={styles.saveButtonText}>OK</Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
-    </Modal>
+      </Modal>
 
-    <GasConsumptionModal
+      <GasConsumptionModal
   isVisible={isGasConsumptionModalVisible}
   toggleModal={toggleGasConsumptionModal}
-  saveConsumption={(value) => setGasConsumption(value)}  // Correctly update consumption
+  saveConsumption={saveGasConsumption}  // Pass this function to the modal
 />
 
-
-    <Modal visible={isGasTypeModalVisible} animationType="slide" transparent={true}>
-  <View style={styles.modalContainer}>
-    <View style={styles.gasTypeModalContent}>
-      <Text style={styles.modalTitle}>Select Gas Type</Text>
-      <View style={styles.gasTypeGrid}>
-        {gasTypes.map((type) => (
-          <TouchableOpacity key={type} onPress={() => selectGasType(type)} style={styles.gasTypeBox}>
-            <Image source={require('../../assets/nozzle.png')} style={styles.gasTypeImage} />
-            <Text style={styles.gasTypeText}>{type}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-    </View>
-  </View>
-</Modal>
-
+      <Modal visible={isGasTypeModalVisible} animationType="slide" transparent={true}>
+        <View style={styles.modalContainer}>
+          <View style={styles.gasTypeModalContent}>
+            <Text style={styles.modalTitle}>Select Gas Type</Text>
+            <View style={styles.gasTypeGrid}>
+              {gasTypes.map((type) => (
+                <TouchableOpacity key={type} onPress={() => selectGasType(type)} style={styles.gasTypeBox}>
+                  <Image source={require('../../assets/nozzle.png')} style={styles.gasTypeImage} />
+                  <Text style={styles.gasTypeText}>{type}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </View>
+        </View>
+      </Modal>
     </>
-    
   );
 };
-
 const styles = StyleSheet.create({
   modalContainer: {
     flex: 1,

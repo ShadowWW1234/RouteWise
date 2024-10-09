@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,27 +8,31 @@ import {
   StyleSheet,
 } from 'react-native';
 import { GasConsumptionContext } from '../context/GasConsumptionProvider';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const GasConsumptionModal = ({ isVisible, toggleModal }) => {
-  const [consumption, setConsumption] = useState('');
-  const { updateGasConsumption } = useContext(GasConsumptionContext);  // Get updateGasConsumption from context
+const GasConsumptionModal = ({ isVisible, toggleModal, saveConsumption }) => {  // Destructure the saveConsumption prop
+  const [consumption, setConsumption] = useState('');  // For TextInput field
+  const { gasConsumption } = useContext(GasConsumptionContext);  // Get gas consumption from context (if necessary)
 
-  const handleSave = async () => {
-    try {
-      // Save gas consumption to AsyncStorage
-      await AsyncStorage.setItem('gasConsumption', consumption); // Save gas consumption
-      
-      // Validate and update gas consumption in the context
-      const parsedConsumption = parseFloat(consumption);
-      if (!isNaN(parsedConsumption)) {
-        updateGasConsumption(parsedConsumption); // Update via context
-      }
-      
-      toggleModal(); // Close the modal after saving
-    } catch (error) {
-      console.error('Failed to save gas consumption:', error);
+  // Set initial value of the input field when modal opens
+  useEffect(() => {
+    if (isVisible) {
+      setConsumption(gasConsumption ? gasConsumption.toString() : '');  // Set initial value when the modal becomes visible
     }
+  }, [isVisible, gasConsumption]);
+
+  const handleSave = () => {
+    const parsedConsumption = parseFloat(consumption.trim());  // Trim any extra spaces
+
+    console.log('Parsed consumption before save:', parsedConsumption);
+
+    if (!isNaN(parsedConsumption) && parsedConsumption > 0) {  // Ensure the value is valid
+      saveConsumption(parsedConsumption);  // Call the save function passed from VehicleTypeSelection
+      console.log('Updating gas consumption:', parsedConsumption);
+    } else {
+      console.error('Invalid consumption value:', consumption);
+    }
+
+    toggleModal();  // Close the modal
   };
 
   return (
@@ -39,10 +43,10 @@ const GasConsumptionModal = ({ isVisible, toggleModal }) => {
 
           <TextInput
             style={styles.inputField}
-            placeholder="Enter L/km"
+            placeholder="Enter km/L"
             keyboardType="numeric"
             value={consumption}
-            onChangeText={setConsumption}  // Update consumption state
+            onChangeText={(value) => setConsumption(value.trim())}  // Trim whitespace
           />
 
           <TouchableOpacity onPress={handleSave} style={styles.saveButton}>

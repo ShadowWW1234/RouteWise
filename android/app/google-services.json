@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "655289936730",
+    "project_id": "routewise-40c3d",
+    "storage_bucket": "routewise-40c3d.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:655289936730:android:dfc06de23bcf606641e163",
+        "android_client_info": {
+          "package_name": "com.route2"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB_q41lbKknpa4n3uZT5z30hYlpjlVTLmI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -24,8 +24,8 @@ const App = () => {
   const [initialState, setInitialState] = useState();  // Store the initial state
   const [appState, setAppState] = useState(AppState.currentState);
 
-  // Handle saving and restoring state
-  useEffect(() => {
+   // Restore navigation state from AsyncStorage
+   useEffect(() => {
     const restoreState = async () => {
       try {
         const savedState = await AsyncStorage.getItem(NAVIGATION_STATE_KEY);
@@ -41,21 +41,21 @@ const App = () => {
       restoreState();
     }
 
+    // Handle app state change (foreground/background)
     const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
       if (appState.match(/inactive|background/) && nextAppState === 'active') {
-        // App has come back to the foreground, restore the navigation state
         restoreState();
       }
       setAppState(nextAppState);
     });
 
     return () => {
-      appStateSubscription.remove();  // Clean up the app state listener
+      appStateSubscription.remove();
     };
   }, [isReady]);
 
   if (!isReady) {
-    return null; // Render a loading spinner if needed
+    return null; // Optionally add a loading spinner here
   }
 
   return (

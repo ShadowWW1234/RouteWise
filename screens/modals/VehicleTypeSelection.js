@@ -70,6 +70,7 @@ const initializeDatabase = () => {
 
 const { width } = Dimensions.get('window');
 
+
 // Vehicle array
 const vehicles = [
   { type: 'Motorcycle', image: require('../../assets/motor.png') },
@@ -99,52 +100,69 @@ const VehicleTypeSelection = ({ modalVisible, toggleModal, onSaveGasConsumption 
   const [preferredGasType, setPreferredGasType] = useState('Diesel'); // Default gas type
   const [isGasTypeModalVisible, setGasTypeModalVisible] = useState(false); // State for modal visibility
 
-  const loadSavedData = () => {
-    if (modalVisible) {
-      try {
-        const db = getDBConnection();
-        db.transaction((tx) => {
-          tx.executeSql('SELECT * FROM VehicleSelection ORDER BY id DESC LIMIT 1;', [], (tx, results) => {
-            console.log('Fetching saved data from database...');
-            
-            if (results.rows.length > 0) {
-              const row = results.rows.item(0);
-              console.log('Saved data found:', row);
-  
-              // Update state with fetched data
-              const vehicleIndex = vehicles.findIndex(v => v.type === row.vehicleType);
+  useEffect(() => {
+    initializeDatabase();
+  }, []);
 
-              if (vehicleIndex !== -1) {
-                setSelectedVehicleIndex(vehicleIndex);  // Ensure correct vehicle index
-                console.log('Selected vehicle index:', vehicleIndex);
-  
-                // Programmatically scroll to the selected vehicle
-                if (scrollRef.current) {
-                  scrollRef.current.scrollTo({
-                    x: vehicleIndex * ITEM_WIDTH, // Calculate the scroll position
-                    animated: true,
-                  });
-                }
-              } else {
-                console.error('Vehicle type not found in the array:', row.vehicleType);
+
+  const loadSavedData = () => {
+  if (modalVisible) {
+    try {
+      const db = getDBConnection();
+      db.transaction((tx) => {
+        tx.executeSql('SELECT * FROM VehicleSelection ORDER BY id DESC LIMIT 1;', [], (tx, results) => {
+          console.log('Fetching saved data from database...');
+
+          if (results.rows.length > 0) {
+            const row = results.rows.item(0);
+            console.log('Saved data found:', row);
+
+            // Declare vehicleIndex in this scope
+            const vehicleIndex = vehicles.findIndex(v => v.type === row.vehicleType);
+
+
+            if (vehicleIndex !== -1) {
+              setSelectedVehicleIndex(vehicleIndex);
+              console.log('Scrolling to vehicle index:', vehicleIndex); // Log the index
+              
+              // Programmatically scroll to the selected vehicle
+              if (scrollRef.current) {
+                scrollRef.current.scrollTo({
+                  x: vehicleIndex * ITEM_WIDTH,
+                  animated: true,
+                });
               }
-  
-              setGasConsumption(row.gasConsumption);  // Gas consumption value from the database
-              setPreferredGasType(row.gasType);  // Gas type value from the database
-  
-              console.log('Vehicle type:', row.vehicleType);
-              console.log('Gas consumption:', row.gasConsumption);
-              console.log('Gas type:', row.gasType);
             } else {
-              console.log('No saved data found in the database.');
+              console.error('Vehicle type not found in the array:', row.vehicleType);
             }
-          });
+
+            setGasConsumption(row.gasConsumption);  // Gas consumption value from the database
+            setPreferredGasType(row.gasType);  // Gas type value from the database
+
+            console.log('Vehicle type:', row.vehicleType);
+            console.log('Gas consumption:', row.gasConsumption);
+            console.log('Gas type:', row.gasType);
+
+            setTimeout(() => {
+              if (scrollRef.current) {
+                scrollRef.current.scrollTo({
+                  x: vehicleIndex * ITEM_WIDTH,
+                  animated: true,
+                });
+              }
+            }, 100); // Adjust timeout duration as necessary
+            
+          } else {
+            console.log('No saved data found in the database.');
+          }
         });
-      } catch (error) {
-        console.error('Failed to load saved data from SQLite:', error);
-      }
+      });
+    } catch (error) {
+      console.error('Failed to load saved data from SQLite:', error);
     }
-  };
+  }
+};
+
   
   
   useEffect(() => {
@@ -285,15 +303,16 @@ const VehicleTypeSelection = ({ modalVisible, toggleModal, onSaveGasConsumption 
   ref={scrollRef}
   horizontal
   showsHorizontalScrollIndicator={false}
-  snapToInterval={ITEM_WIDTH}  // Set the width of each item for snapping
+  snapToInterval={ITEM_WIDTH}  // Ensure this is the correct width for snapping
   decelerationRate="fast"
   snapToAlignment="center"
   contentContainerStyle={{ paddingHorizontal: SPACING }}
-  onScroll={onScroll}  // Ensure that onScroll updates the selected vehicle
+  onScroll={onScroll}  
   scrollEventThrottle={16}
 >
   {renderVehicleOptions()}
 </ScrollView>
+
 
             <View style={styles.divider} />
 

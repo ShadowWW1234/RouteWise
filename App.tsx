@@ -24,6 +24,23 @@ const App = () => {
   const [initialState, setInitialState] = useState();  // Store the initial state
   const [appState, setAppState] = useState(AppState.currentState);
 
+  useEffect(() => {
+    const clearStateOnReopen = async () => {
+      await AsyncStorage.removeItem(NAVIGATION_STATE_KEY); // Clear previous navigation state
+    };
+  
+    const appStateSubscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        clearStateOnReopen();
+      }
+    });
+  
+    return () => {
+      appStateSubscription.remove();
+    };
+  }, []);
+
+
    // Restore navigation state from AsyncStorage
    useEffect(() => {
     const restoreState = async () => {
@@ -32,10 +49,15 @@ const App = () => {
         if (savedState) {
           setInitialState(JSON.parse(savedState));
         }
+      } catch (error) {
+        console.error('Failed to restore navigation state:', error);
+        // Optionally, clear the corrupted state:
+        await AsyncStorage.removeItem(NAVIGATION_STATE_KEY);
       } finally {
         setIsReady(true);
       }
     };
+    
 
     if (!isReady) {
       restoreState();

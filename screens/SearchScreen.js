@@ -1,4 +1,4 @@
-import { StyleSheet, Text, View, SafeAreaView, TouchableOpacity, TextInput } from 'react-native';
+import { StyleSheet, Text, View, SafeAreaView, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
 import React, { useState, useEffect, useContext } from 'react';
 import tw from "tailwind-react-native-classnames";  
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -16,7 +16,7 @@ const SearchScreen = () => {
   const [isDestinationModalVisible, setDestinationModalVisible] = useState(false);
   const [selectedDestination, setSelectedDestination] = useState(null);
   const [selectedOrigin, setSelectingOrigin] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
 
   const { gasConsumption, updateGasConsumption } = useContext(GasConsumptionContext);
   const [modalVisible, setModalVisible] = useState(false);
@@ -79,10 +79,11 @@ const SearchScreen = () => {
         );
       });
     };
-
+  
     createTableAndLoadData();
   }, []);
-
+  
+  
   // Handle place selection from the SearchBar
   const handlePlaceSelect = (origin, destination) => {
     setSelectingOrigin(origin);
@@ -106,15 +107,21 @@ const SearchScreen = () => {
   const toggleModal = () => {
     setModalVisible(!modalVisible);
   };
-
-  // Loading screen while fetching data
+  useEffect(() => {
+    console.log('Gas Consumption:', gasConsumption);
+    console.log('Selected Origin:', selectedOrigin);
+    console.log('Selected Destination:', selectedDestination);
+  }, [gasConsumption, selectedOrigin, selectedDestination]);
+  
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#0000ff" />
         <Text>Loading...</Text>
       </View>
     );
   }
+  
 
   return (
     <SafeAreaView style={tw`flex-1 bg-white`}>
@@ -244,5 +251,11 @@ const styles = StyleSheet.create({
         color: 'black',
         fontSize: 16,
         flex: 1,
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: 'white',
     },
 });

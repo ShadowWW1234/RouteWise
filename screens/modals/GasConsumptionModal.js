@@ -6,12 +6,13 @@ import {
   TextInput,
   TouchableOpacity,
   StyleSheet,
+  Alert,
 } from 'react-native';
 import { GasConsumptionContext } from '../context/GasConsumptionProvider';
 
-const GasConsumptionModal = ({ isVisible, toggleModal, saveConsumption }) => {  // Destructure the saveConsumption prop
+const GasConsumptionModal = ({ isVisible, toggleModal, saveConsumption }) => {
   const [consumption, setConsumption] = useState('');  // For TextInput field
-  const { gasConsumption } = useContext(GasConsumptionContext);  // Get gas consumption from context (if necessary)
+  const { gasConsumption } = useContext(GasConsumptionContext);  // Get gas consumption from context
 
   // Set initial value of the input field when modal opens
   useEffect(() => {
@@ -25,14 +26,14 @@ const GasConsumptionModal = ({ isVisible, toggleModal, saveConsumption }) => {  
 
     console.log('Parsed consumption before save:', parsedConsumption);
 
-    if (!isNaN(parsedConsumption) && parsedConsumption > 0) {  // Ensure the value is valid
+    if (!isNaN(parsedConsumption) && parsedConsumption > 0) {
       saveConsumption(parsedConsumption);  // Call the save function passed from VehicleTypeSelection
       console.log('Updating gas consumption:', parsedConsumption);
+      toggleModal();  // Close the modal after saving
     } else {
+      Alert.alert('Invalid Input', 'Please enter a valid number greater than 0');  // Show an error alert
       console.error('Invalid consumption value:', consumption);
     }
-
-    toggleModal();  // Close the modal
   };
 
   return (
@@ -46,7 +47,7 @@ const GasConsumptionModal = ({ isVisible, toggleModal, saveConsumption }) => {  
             placeholder="Enter km/L"
             keyboardType="numeric"
             value={consumption}
-            onChangeText={(value) => setConsumption(value.trim())}  // Trim whitespace
+            onChangeText={(value) => setConsumption(value)}  // Handle input value
           />
 
           <TouchableOpacity onPress={handleSave} style={styles.saveButton}>
@@ -61,7 +62,6 @@ const GasConsumptionModal = ({ isVisible, toggleModal, saveConsumption }) => {  
     </Modal>
   );
 };
-
 const styles = StyleSheet.create({
   modalContainer: {
     flex: 1,

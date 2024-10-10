@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState,useContext } from 'react';
 import { StyleSheet, TextInput, View, Modal, SafeAreaView, TouchableOpacity, FlatList, Text, Button } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { debounce } from 'lodash';
@@ -8,9 +8,11 @@ import MapSelectionModal from './MapSelectionModal';
 import DestinationModal from './DestinationModal';
 import {  MAPBOX_API_TOKEN } from '@env';
 import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
+import SQLite from 'react-native-sqlite-storage';
+import { GasConsumptionContext } from '../context/GasConsumptionProvider';
 
  
-const SearchBar = ({ modalVisible, toggleModal, gasConsumption }) => {
+const SearchBar = ({ modalVisible, toggleModal }) => {
   const [originText, setOriginText] = useState('Select manual location'); // Default text for origin
   const [searchText, setSearchText] = useState(''); // For destination search input
   const [searchResults, setSearchResults] = useState([]);
@@ -24,25 +26,19 @@ const SearchBar = ({ modalVisible, toggleModal, gasConsumption }) => {
   const [destinationSearchText, setDestinationSearchText] = useState(''); // For destination search input
   const [originSearchResults, setOriginSearchResults] = useState([]); // Store search results for origin
   const [destinationSearchResults, setDestinationSearchResults] = useState([]); // Store search results for destination
- 
+  const { gasConsumption, setGasConsumption } = useContext(GasConsumptionContext); // Access the context
+
   const dispatch = useDispatch();
 
-
-   // Function to reset the search text in the SearchBar
-  const resetSearch = () => {
-    setSearchText(''); // Reset the search input
-    setSearchResults([]); // Clear search results
-  };
-
-  const handleMapSelection = (selectedLocation) => {
-    const { latitude, longitude, description } = selectedLocation;
-    
-    setOriginSearchText(description); // Update the origin search text input
-    setSelectedOrigin(selectedLocation); // Set the selected origin
-    dispatch(setOrigin(selectedLocation)); // Set origin in Redux
-
-    setMapModalVisible(false); // Close the map modal after selecting
-  };
+  useEffect(() => {
+    if (modalVisible) {
+      loadGasConsumptionFromDB(setGasConsumption); // Fetch gas consumption when modal is visible
+    }
+  }, [modalVisible]);
+  
+  useEffect(() => {
+    console.log('Gas consumption in SearchBar:', gasConsumption);  // Log the gas consumption
+  }, [gasConsumption]);
 
 
   // Function to reset the search text and results
@@ -84,6 +80,36 @@ useEffect(() => {
   
 
 
+  const getDBConnection = () => {
+    const db = SQLite.openDatabase(
+      { name: 'vehicle_data.db', location: 'default' },
+      () => console.log('Database opened successfully'),
+      (error) => console.error('Failed to open database:', error)
+    );
+    return db;
+  };
+  
+  const loadGasConsumptionFromDB = async (setGasConsumption) => {
+    const db = getDBConnection();
+    db.transaction((tx) => {
+      tx.executeSql(
+        'SELECT gasConsumption FROM VehicleSelection ORDER BY id DESC LIMIT 1;',
+        [],
+        (tx, results) => {
+          if (results.rows.length > 0) {
+            const row = results.rows.item(0);
+            setGasConsumption(row.gasConsumption); // Set the gas consumption
+            console.log('Gas consumption loaded:', row.gasConsumption);
+          } else {
+            console.log('No gas consumption data found.');
+          }
+        },
+        (tx, error) => {
+          console.error('Failed to load gas consumption from database:', error);
+        }
+      );
+    });
+  };
   // Handle place selection for origin
   const handleOriginSelect = (place) => {
     const { center, place_name } = place;
@@ -254,16 +280,15 @@ useEffect(() => {
     onSelectLocation={handleSelectLocation}
   />
 
-  {/* Destination Modal (opens after destination is selected) */}
-  {destinationModalVisible && (
-    <DestinationModal
-      modalVisible={destinationModalVisible}
-      toggleModal={() => setDestinationModalVisible(false)}
-      origin={selectedOrigin}
-      destination={selectedDestination}
-      gasConsumption={gasConsumption}
-    />
-  )}
+{destinationModalVisible && (
+  <DestinationModal
+    visible={destinationModalVisible}
+    toggleModal={() => setDestinationModalVisible(false)}
+    origin={selectedOrigin}
+    destination={selectedDestination}
+   
+  />
+)}
 </SafeAreaView>
 
     </Modal>

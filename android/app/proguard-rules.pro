@@ -31,3 +31,9 @@
 
 # Optional: Prevent obfuscation of class names for better debugging
 -keepattributes SourceFile,LineNumberTable
+
+# Keep SQLite classes
+-keep class net.sqlcipher.** { *; }
+-keep class android.database.sqlite.** { *; }
+-keep class android.database.** { *; }
+-keep class android.content.** { *; }

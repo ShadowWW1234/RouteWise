@@ -47,6 +47,7 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
+      //  debuggable true 
         signingConfig signingConfigs.debug
         minifyEnabled false // Disable ProGuard
         shrinkResources false // Disable resource shrinking

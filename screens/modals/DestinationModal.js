@@ -9,6 +9,7 @@ import {  MAPBOX_API_TOKEN } from '@env';
 import Geolocation from '@react-native-community/geolocation';
 import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { GasConsumptionContext } from '../context/GasConsumptionProvider';
+import SQLite from 'react-native-sqlite-storage';
 
 const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch }) => {
     const dispatch = useDispatch();
@@ -24,8 +25,10 @@ const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch
     const [userLocation, setUserLocation] = useState(null); // State to store user's current location
     const previewDistanceThreshold = 1; // Set a threshold (in km) to switch to preview mode
     const [estimatedFuelConsumption, setEstimatedFuelConsumption] = useState(null);
-    const { gasConsumption } = useContext(GasConsumptionContext);
    
+    const { gasConsumption, setGasConsumption } = useContext(GasConsumptionContext);
+
+
     const navigation = useNavigation();
  
     const resetState = () => {
@@ -53,40 +56,87 @@ const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch
         );
     }, []);
 
- 
-    useEffect(() => {
-        const loadVehicleData = async () => {
-            try {
-                const savedGasConsumption = await AsyncStorage.getItem('gasConsumption');
-                console.log('Retrieved gasConsumption from storage:', savedGasConsumption);
-                if (savedGasConsumption) {
-                    const parsedGasConsumption = parseFloat(savedGasConsumption);
-                    setGasConsumption(parsedGasConsumption); // Correctly set gasConsumption
-                    console.log('gasConsumption state updated:', parsedGasConsumption);
-                } else {
-                    console.log('No gasConsumption value found in storage.');
+   
+
+    // Function to fetch gas consumption from SQLite database
+    const loadVehicleDataFromDB = () => {
+        const db = SQLite.openDatabase(
+            { name: 'vehicle_data.db', location: 'default' },
+            () => console.log('Database opened successfully'),
+            (error) => console.error('Failed to open database:', error)
+        );
+
+        db.transaction((tx) => {
+            tx.executeSql(
+                'SELECT gasConsumption FROM VehicleSelection ORDER BY id DESC LIMIT 1;',
+                [],
+                (tx, results) => {
+                    if (results.rows.length > 0) {
+                        const row = results.rows.item(0);
+                        setGasConsumption(row.gasConsumption);
+                        console.log('Loaded gas consumption from SQLite:', row.gasConsumption);
+                    } else {
+                        console.log('No gas consumption data found.');
+                    }
+                },
+                (tx, error) => {
+                    console.error('Failed to load gas consumption from SQLite:', error);
                 }
-            } catch (error) {
-                console.error('Failed to load gas consumption:', error);
-            }
-        };
-    
-        if (visible) {
-            loadVehicleData();
-        }
-    }, [visible]);
+            );
+        });
+    };
+
+  // Load gas consumption when the modal becomes visible
+  useEffect(() => {
+    if (visible) {
+        console.log('Loading gas consumption...');
+        loadVehicleDataFromDB(); // Load gas consumption from DB when the modal opens
+    }
+}, [visible]);
+
+
+    useEffect(() => {
+        console.log('Gas Consumption Value after loading:', gasConsumption);
+    }, [gasConsumption]);
+   
     
   
+    // Calculate fuel consumption when routes and gas consumption are available
     useEffect(() => {
         if (routes.length > 0 && gasConsumption) {
-          const selectedRoute = routes[selectedRouteIndex];
-          const distanceInKm = selectedRoute.distance / 1000;
-          const fuelUsed = (distanceInKm / gasConsumption).toFixed(2);
-          setEstimatedFuelConsumption(fuelUsed);
-        }
-      }, [routes, selectedRouteIndex, gasConsumption]);
-    
+            const selectedRoute = routes[selectedRouteIndex];
+            const distanceInKm = selectedRoute.distance / 1000;
+            const fuelUsed = (distanceInKm / gasConsumption).toFixed(2);
+            setEstimatedFuelConsumption(fuelUsed);
 
+            console.log('Calculating fuel consumption:');
+            console.log('Distance (km):', distanceInKm);
+            console.log('Gas consumption (km/L):', gasConsumption);
+            console.log('Fuel used (L):', fuelUsed);
+        }
+    }, [routes, selectedRouteIndex, gasConsumption]);
+
+
+    useEffect(() => {
+        if (routes.length > 0 && gasConsumption) {
+            const selectedRoute = routes[selectedRouteIndex];
+          //  console.log('Selected route distance:', selectedRoute.distance); // Debugging log
+    
+            if (selectedRoute.distance) {
+                const distanceInKm = selectedRoute.distance / 1000;
+                const fuelUsed = (distanceInKm / gasConsumption).toFixed(2);
+                setEstimatedFuelConsumption(fuelUsed);
+    
+                console.log('Calculating fuel consumption with:');
+                console.log('Distance (km):', distanceInKm);
+                console.log('Gas consumption (km/L):', gasConsumption);
+                console.log('Fuel used (L):', fuelUsed);
+            } else {
+                console.error('Distance for selected route is not available');
+            }
+        }
+    }, [routes, selectedRouteIndex, gasConsumption]);
+    
     useEffect(() => {
         if (userLocation && origin) {
             const distanceToOrigin = calculateDistance(
@@ -240,19 +290,15 @@ const fitToMarkers = () => {
 
     // Haversine formula to calculate distance between two points
     const calculateDistance = (lat1, lon1, lat2, lon2) => {
-        // Example distance calculation using Haversine formula
-        const R = 6371; // Radius of the Earth in km
+        const R = 6371;
         const dLat = (lat2 - lat1) * (Math.PI / 180);
         const dLon = (lon2 - lon1) * (Math.PI / 180);
-        const a = 
-            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
             Math.cos(lat1 * (Math.PI / 180)) * Math.cos(lat2 * (Math.PI / 180)) *
             Math.sin(dLon / 2) * Math.sin(dLon / 2);
         const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        const distance = R * c; // Distance in km
-        return distance; // Make sure to return a number
+        return R * c;
     };
-    
 
  
 useEffect(() => {
@@ -302,18 +348,50 @@ useEffect(() => {
     }
 }, [routes, selectedRouteIndex]);
 
-const handleGoNow = () => {
+
+// Handle fetching routes and calculate fuel consumption
+const handleGoNow = async () => {
     if (!loadingRoutes && !isRouteFetched) {
-        // Fetch routes when the user clicks "View Routes"
-        fetchRoutes();
-        setIsRouteFetched(true); // Set the flag to true once routes are fetched
+        await fetchRoutes(); // Fetch routes
+        setIsRouteFetched(true); // Mark routes as fetched
+
+        if (routes.length > 0 && gasConsumption > 0) {
+            calculateFuelConsumption(); // Calculate fuel consumption
+        } else {
+            console.error('Routes or gas consumption data is missing after fetching.');
+        }
     } else if (isRouteFetched) {
-        // If routes are already fetched, trigger navigation
-        startNavigation(); // Start turn-by-turn navigation
-        toggleModal(); // Close the DestinationModal
+        startNavigation(); // Start navigation
+        toggleModal(); // Close modal
     }
 };
 
+
+const calculateFuelConsumption = () => {
+    if (routes.length > 0 && gasConsumption > 0) {
+        const selectedRoute = routes[selectedRouteIndex]; // Use the selected route
+        const distanceInKm = selectedRoute.distance / 1000; // Convert distance to kilometers
+        const fuelUsed = (distanceInKm / gasConsumption).toFixed(2); // Calculate fuel consumption
+        setEstimatedFuelConsumption(fuelUsed); // Set the estimated fuel consumption
+
+        console.log('Fuel consumption calculated:', fuelUsed);
+        console.log('Distance in km:', distanceInKm);
+        console.log('Gas consumption (km/L):', gasConsumption);
+    } else {
+        console.error('Routes or gas consumption data is missing or invalid:', {
+            gasConsumption,
+            routes,
+        });
+    }
+};
+useEffect(() => {
+    console.log('Routes:', routes);
+    console.log('Gas Consumption:', gasConsumption);
+
+    if (routes.length > 0 && gasConsumption > 0) {
+        calculateFuelConsumption();
+    }
+}, [routes, gasConsumption, selectedRouteIndex]);
 
 
 
@@ -489,7 +567,8 @@ const handleGoNow = () => {
     </View>
     <View style={styles.rightColumn}>
         <Text  style={styles.distanceText}>
-        <MaterialCommunityIcons name="gas-station" size={15}/>: {estimatedFuelConsumption ? `${estimatedFuelConsumption} L` : '...'}
+        <MaterialCommunityIcons name="gas-station" size={15}/>:
+         {estimatedFuelConsumption ? `${estimatedFuelConsumption} L` : '...'}
         </Text>
         {distance && !isNaN(distance) ? (
             <Text style={styles.distanceText}>
@@ -528,10 +607,7 @@ const handleGoNow = () => {
     </>
   )}
 </View>
-
-
-
-    
+ 
         </View>
     </Modal>
     

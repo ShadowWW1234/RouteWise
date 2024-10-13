@@ -34,7 +34,8 @@ const saveRouteToStorage = async (routeData, instructions, eta, currentRoadName)
     console.error('Error saving route data to storage:', error);
   }
 };
- 
+
+
 const loadRouteFromStorage = async () => {
   try {
     const values = await AsyncStorage.multiGet([
@@ -121,7 +122,7 @@ const NavigationScreen = ({ route, navigation }) => {
   const [speed, setSpeed] = useState(0);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownHeight = useRef(new Animated.Value(0)).current;
-  const [followPitch, setFollowPitch] = useState(70);
+  const [followPitch, setFollowPitch] = useState(10);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [distanceToNextManeuver, setDistanceToNextManeuver] = useState(0);
   const remainingInstructions = instructions.slice(currentStepIndex);
@@ -142,14 +143,15 @@ const NavigationScreen = ({ route, navigation }) => {
   const [appState, setAppState] = useState(AppState.currentState);
   const [congestionLevels, setCongestionLevels] = useState([]);
   const [routeProgress, setRouteProgress] = useState(0);
-  const [snappedPosition, setSnappedPosition] = useState([0, 0]); // Default to [0, 0]
   const [isDestinationReached, setIsDestinationReached] = useState(false);
   const { gasConsumption } = useContext(GasConsumptionContext);
+  const [snappedPosition, setSnappedPosition] = useState([0, 0]); // Proper initialization
 
+  let previousPosition = 0;
 
    // Threshold to trigger the "Destination Reached" event
-   const destinationThreshold = 0.95; // 95% of the route traversed
-   const proximityThreshold = 100; // 100 meters from the destination
+   const destinationThreshold = 0.98; // 95% of the route traversed
+   const proximityThreshold = 10; // 100 meters from the destination
  
   useEffect(() => {
     if (route.params?.newStop) {
@@ -225,7 +227,31 @@ const NavigationScreen = ({ route, navigation }) => {
       features: routeFeatures,
     };
   };
+  
 
+  const updateRouteProgress = (snappedPosition) => {
+    const routeLine = turf.lineString(fullRoute);
+  
+    const traversedRoute = turf.lineSlice(
+      turf.point(fullRoute[0]),
+      turf.point(snappedPosition),
+      routeLine
+    );
+  
+    const nonTraversedRoute = turf.lineSlice(
+      turf.point(snappedPosition),
+      turf.point(fullRoute[fullRoute.length - 1]),
+      routeLine
+    );
+  
+    setTraversedRoute(traversedRoute.geometry.coordinates);
+    setNonTraversedRoute(nonTraversedRoute.geometry.coordinates);
+  
+    const remainingDistanceInMeters = turf.length(nonTraversedRoute, { units: 'meters' });
+    setRemainingDistance((remainingDistanceInMeters / 1000).toFixed(2)); // Convert meters to km
+  };
+  
+  
   const getCongestionColor = (congestionValue) => {
     if (congestionValue > 15 && congestionValue <= 25) {
       return 'orange';  // Medium congestion
@@ -242,19 +268,34 @@ const NavigationScreen = ({ route, navigation }) => {
   };
 
   const checkIfOffRoute = (currentPosition, route) => {
-    if (!currentPosition || route.length === 0) return false;
-
-    const userPoint = turf.point(currentPosition);
-    const routeLine = turf.lineString(route);
-    const snapped = turf.nearestPointOnLine(routeLine, userPoint);
+    // Ensure both the current position and route are valid
+    if (!currentPosition || !Array.isArray(route) || route.length === 0) return false;
+  
+    // Create Turf.js points and lines from the provided coordinates
+    const userPoint = turf.point(currentPosition); // User's current GPS position
+    const routeLine = turf.lineString(route); // The route as a line
+  
+    // Find the nearest point on the route to the user's current position
+    const snapped = turf.nearestPointOnLine(routeLine, userPoint, { units: 'meters' });
+  
+    // Calculate the distance from the user's actual position to the nearest point on the route
     const distanceFromRoute = turf.distance(userPoint, snapped, { units: 'meters' });
-
-    return distanceFromRoute > 30;
+  
+    console.log(`Distance from route: ${distanceFromRoute.toFixed(2)} meters`);
+  
+    // Determine if the user is off the route by more than 30 meters
+    return distanceFromRoute > 30; // Returns true if off-route
   };
+  
+
+  
   const congestionSegment = [
     { percentage: 0.1, start: 0.2, color: 'orange' }, // 10% of the route starting at 20% of the total route
     { percentage: 0.15, start: 0.45, color: 'red' },  // 15% of the route starting at 45%
   ];
+
+
+
   useEffect(() => {
     // When remaining duration changes, recalculate ETA
     if (remainingDuration > 0) {
@@ -308,92 +349,108 @@ useEffect(() => {
 }, [selectedRoute]);
 
  
-  const recalculateRoute = async (currentPosition) => {
-    setIsRecalculating(true); // Show the modal before recalculating
+const recalculateRoute = async (currentPosition) => {
+  if (!currentPosition || !destination) {
+    console.error('Invalid input: Current position or destination is missing.');
+    return;
+  }
 
-    try {
-      const originCoordinates = `${currentPosition[0]},${currentPosition[1]}`;
-      const destinationCoordinates = `${destination.longitude},${destination.latitude}`;
-      const coordinatesArray = [originCoordinates, ...stops.map(stop => `${stop.longitude},${stop.latitude}`), destinationCoordinates];
-      const coordinatesString = coordinatesArray.join(';');
-  
-      // Select the profile based on the number of stops
-      const profile = stops.length > 1 ? 'driving' : 'driving-traffic';
-  
-      // Fetch the new route from Mapbox Directions API
-      const response = await axios.get(
-        `https://api.mapbox.com/directions/v5/mapbox/${profile}/${coordinatesString}`,
-        {
-          params: {
-            access_token: MAPBOX_API_TOKEN,
-            steps: true,
-            geometries: 'geojson',
-            overview: 'full',
-            ...(profile === 'driving-traffic' && { annotations: 'congestion_numeric' }),
-          }
-        }
+  setIsRecalculating(true); // Show recalculating modal
+
+  try {
+    const originCoordinates = `${currentPosition[0]},${currentPosition[1]}`;
+    const destinationCoordinates = `${destination.longitude},${destination.latitude}`;
+
+    const coordinatesArray = [
+      originCoordinates,
+      ...stops.map((stop) => `${stop.longitude},${stop.latitude}`),
+      destinationCoordinates,
+    ];
+
+    const coordinatesString = coordinatesArray.join(';');
+
+    // Select profile type (driving vs. driving-traffic) based on stops
+    const profile = stops.length > 1 ? 'driving' : 'driving-traffic';
+
+    console.log(`Fetching new route using profile: ${profile}`);
+
+    // Fetch route from Mapbox Directions API
+    const response = await axios.get(
+      `https://api.mapbox.com/directions/v5/mapbox/${profile}/${coordinatesString}`,
+      {
+        params: {
+          access_token: MAPBOX_API_TOKEN,
+          steps: true,
+          geometries: 'geojson',
+          overview: 'full',
+          ...(profile === 'driving-traffic' && { annotations: 'congestion_numeric' }),
+        },
+      }
+    );
+
+    const routeData = response.data.routes[0];
+
+    if (!routeData) {
+      console.error('No route data received.');
+      return;
+    }
+
+    // Convert distance to kilometers and format to two decimal places
+    const distanceInKilometers = (routeData.distance / 1000).toFixed(2);
+
+    // Update state with the new route data
+    setFullRoute(routeData.geometry.coordinates);
+    setInstructions(routeData.legs.flatMap((leg) => leg.steps));
+    setTotalDistance(routeData.distance); // in meters
+    setRemainingDistance(distanceInKilometers); // in kilometers
+    setRemainingDuration(routeData.duration); // in seconds
+    setCurrentStepIndex(0); // Reset the step index
+
+    // Set the first turn-by-turn instruction
+    const firstStep = routeData.legs[0]?.steps[0];
+    if (firstStep) {
+      setCurrentInstruction(`${firstStep.maneuver.instruction} onto ${firstStep.name}`);
+    }
+
+    // Handle congestion data if using the "driving-traffic" profile
+    if (profile === 'driving-traffic') {
+      const congestionNumeric = routeData.legs.flatMap(
+        (leg) => leg.annotation?.congestion_numeric || []
       );
-  
-      const routeData = response.data.routes[0]; // Extract the first route
-  
-      // Convert distance from meters to kilometers during recalculation
-      const distanceInKilometers = (routeData.distance / 1000).toFixed(2); // Convert to kilometers and format to 2 decimal places
-  
-      setFullRoute(routeData.geometry.coordinates); // Update the route geometry
-      setInstructions(routeData.legs.flatMap(leg => leg.steps)); // Update turn-by-turn instructions
-  
-      setTotalDistance(routeData.distance); // Keep this in meters for internal calculations
-      setRemainingDistance(distanceInKilometers); // Set the remaining distance in kilometers
-      setRemainingDuration(routeData.duration); // Set the duration
-  
-      setCurrentStepIndex(0); // Reset step index for turn-by-turn instructions
-  
-      // Set the first instruction
-      if (routeData.legs[0].steps.length > 0) {
-        const firstStep = routeData.legs[0].steps[0];
-        setCurrentInstruction(`${firstStep.maneuver.instruction} onto ${firstStep.name}`);
-      }
-  
-      // Handle traffic congestion data if using the driving-traffic profile
-      if (profile === 'driving-traffic') {
-        const congestionNumeric = routeData.legs.flatMap(leg => leg.annotation?.congestion_numeric || []);
-  
-        const segments = routeData.geometry.coordinates.map((coord, i) => {
-          if (i === routeData.geometry.coordinates.length - 1) return null;
-  
-          const congestionValue = congestionNumeric[i] || null;
-          const [lon1, lat1] = coord;
-          const [lon2, lat2] = routeData.geometry.coordinates[i + 1];
-          const congestionColor = getCongestionColor(congestionValue);
-  
-          // Only render segments if they have significant congestion
-          if (!shouldRenderSegment(congestionValue)) return null;
-  
-          return {
-            type: 'Feature',
-            geometry: {
-              type: 'LineString',
-              coordinates: [[lon1, lat1], [lon2, lat2]],
-            },
-            properties: {
-              color: congestionColor,
-            },
-          };
-        }).filter(segment => segment !== null);
-  
-        setCongestionSegments(segments); // Set congestion segments for rendering on the map
-      } else {
-        setCongestionSegments([]); // Clear congestion data for non-traffic profile
-      }
-  
-      setIsRecalculating(false); // Reset recalculating state
-    } catch (error) {
-      console.error('Error recalculating directions:', error);
-   
-    }finally {
-        setIsRecalculating(false); // Hide the modal after recalculation
-      }
-  };
+
+      const segments = routeData.geometry.coordinates.map((coord, i) => {
+        if (i === routeData.geometry.coordinates.length - 1) return null;
+
+        const congestionValue = congestionNumeric[i] || 0;
+        const [lon1, lat1] = coord;
+        const [lon2, lat2] = routeData.geometry.coordinates[i + 1];
+        const congestionColor = getCongestionColor(congestionValue);
+
+        if (!shouldRenderSegment(congestionValue)) return null;
+
+        return {
+          type: 'Feature',
+          geometry: {
+            type: 'LineString',
+            coordinates: [[lon1, lat1], [lon2, lat2]],
+          },
+          properties: { color: congestionColor },
+        };
+      }).filter((segment) => segment !== null);
+
+      setCongestionSegments(segments); // Set congestion segments for rendering
+    } else {
+      setCongestionSegments([]); // Clear congestion data if not using traffic profile
+    }
+
+    console.log('Route recalculation completed successfully.');
+  } catch (error) {
+    console.error('Error recalculating directions:', error.message);
+  } finally {
+    setIsRecalculating(false); // Hide recalculating modal
+  }
+};
+
   
 
   const fetchDirections = async () => {
@@ -423,6 +480,7 @@ useEffect(() => {
         }
       );
   
+      
       const routeData = response.data.routes[0];
   
       // Convert distance to kilometers
@@ -445,6 +503,83 @@ useEffect(() => {
     } catch (error) {
       console.error('Error fetching directions:', error);
     }
+  };
+    
+  const matchLocationToRoad = async (longitude, latitude) => {
+    try {
+      console.log(`Attempting to match location: [${longitude}, ${latitude}]`);
+  
+      // Ensure we have a previous position; if not, initialize it
+      if (!previousPosition) {
+        previousPosition = [longitude, latitude];
+        return [longitude, latitude]; // Fallback to GPS if no previous position
+      }
+  
+      // Construct the coordinates string with both previous and current positions
+      const coordinatesString = `${previousPosition[0]},${previousPosition[1]};${longitude},${latitude}`;
+  
+      const response = await axios.get(
+        `https://api.mapbox.com/matching/v5/mapbox/driving/${coordinatesString}`,
+        {
+          params: {
+            access_token: MAPBOX_API_TOKEN, // Your API token
+            geometries: 'geojson',          // Return coordinates in GeoJSON
+            overview: 'full',               // Full overview of the route
+            radiuses: '10;10',              // Set radii for each point
+          },
+        }
+      );
+      console.log(`Received GPS Location: ${gpsPosition}`);
+      console.log(`Using Snapped Position: ${snappedPosition}`);
+      console.log(`Distance from Route: ${distanceFromRoute.toFixed(2)} meters`);
+      
+      // Extract the snapped coordinate (the second point in the response)
+      const matchedPoint = response.data.matchings[0]?.geometry?.coordinates[1];
+  
+      if (matchedPoint) {
+        console.log(`Using Snapped Position: ${matchedPoint}`);
+        previousPosition = [longitude, latitude]; // Update previous position
+        return matchedPoint;
+      } else {
+        console.warn('No matching road found. Using GPS coordinates.');
+        previousPosition = [longitude, latitude]; // Update previous position
+        return [longitude, latitude]; // Fallback to GPS
+      }
+    } catch (error) {
+      console.error('Error matching location to road:', error.response?.data || error.message);
+      previousPosition = [longitude, latitude]; // Update on error
+      return [longitude, latitude]; // Fallback to GPS coordinates
+    }
+  };
+  
+  const animateTransition = (prevPosition, newPosition, duration) => {
+    // Ensure positions are valid before starting the animation
+    if (!prevPosition || !newPosition || prevPosition.length < 2 || newPosition.length < 2) {
+      console.error('Invalid positions for animation:', { prevPosition, newPosition });
+      return; // Exit early if inputs are invalid
+    }
+  
+    let startTime = null;
+  
+    const animate = (timestamp) => {
+      if (!startTime) startTime = timestamp;
+      const elapsed = timestamp - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+  
+      const lng = prevPosition[0] + (newPosition[0] - prevPosition[0]) * progress;
+      const lat = prevPosition[1] + (newPosition[1] - prevPosition[1]) * progress;
+  
+      console.log(`Animating to: [${lng}, ${lat}]`);
+  
+      setSnappedPosition([lng, lat]);
+  
+      if (progress < 1) {
+        requestAnimationFrame(animate); // Continue animation until complete
+      }
+    };
+  
+    // Start the animation only if inputs are valid
+    requestAnimationFrame(animate);
   };
   
 
@@ -520,19 +655,31 @@ useEffect(() => {
       // Calculate the progress along the route
       const progress = calculateProgress(currentPosition, fullRoute);
       setRouteProgress(progress);
-
-      // Check if the user is near the destination
+  
+      // Calculate the distance to the destination
       const userPoint = turf.point(currentPosition);
       const destinationPoint = turf.point([destination.longitude, destination.latitude]);
       const distanceToDestination = turf.distance(userPoint, destinationPoint, { units: 'meters' });
-
-      // Trigger "Destination Reached" based on either progress or proximity
+  
+      // Round distance and convert to appropriate units
+      const roundedDistance =
+        distanceToDestination >= 1000
+          ? `${(distanceToDestination / 1000).toFixed(2)} km`
+          : `${Math.round(distanceToDestination)} meters`;
+  
+      console.log(`Distance to destination: ${roundedDistance}`);
+  
+      // Thresholds for destination detection
+      const destinationThreshold = 0.99; // 99% of the route traversed
+      const proximityThreshold = 50; // 50 meters from the destination
+  
+      // Trigger "Destination Reached" when close enough
       if (progress >= destinationThreshold || distanceToDestination <= proximityThreshold) {
         setIsDestinationReached(true);
       }
     }
   }, [currentPosition, fullRoute]);
-
+  
 
   useEffect(() => {
     if (isDestinationReached) {
@@ -711,135 +858,107 @@ const formatDuration = (durationInSeconds) => {
               />
             </MapboxGL.ShapeSource>
           )}
-  
-          <MapboxGL.UserLocation
-            visible={true}
-            showsUserHeadingIndicator={true}
-            onUpdate={(location) => {
-              const { longitude, latitude, speed } = location.coords;
-              const actualPosition = [longitude, latitude];
-  
-              // Convert speed from meters per second to kilometers per hour
-              const speedKmPerHour = speed ? (speed * 3.6).toFixed(1) : 0;
-              setSpeed(speedKmPerHour);
-  
-              if (fullRoute.length > 0) {
-                const userPoint = turf.point(actualPosition);
-                const routeLine = turf.lineString(fullRoute);
-  
-                // Snap the user's position to the nearest point on the route
-                const snapped = turf.nearestPointOnLine(routeLine, userPoint, { units: 'meters' });
-  
-                if (snapped && snapped.geometry && snapped.geometry.coordinates) {
-                  const snappedPosition = snapped.geometry.coordinates;
-  
-                  // Smooth transition for the location update
-                  const smoothTransition = (prevPosition, newPosition, duration) => {
-                    let startTime = null;
-  
-                    const animate = (timestamp) => {
-                      if (!startTime) startTime = timestamp;
-                      const elapsed = timestamp - startTime;
-                      const progress = Math.min(elapsed / duration, 1);
-  
-                      // Linear interpolation between previous and new positions
-                      const lng = prevPosition[0] + (newPosition[0] - prevPosition[0]) * progress;
-                      const lat = prevPosition[1] + (newPosition[1] - prevPosition[1]) * progress;
-  
-                      setSnappedPosition([lng, lat]);
-  
-                      if (progress < 1) {
-                        requestAnimationFrame(animate); // Continue animation if not done
-                      }
-                    };
-  
-                    requestAnimationFrame(animate);
-                  };
-  
-                  // Animate smoothly from the previous snapped position to the new snapped position
-                  smoothTransition(snappedPosition, actualPosition, 500); // Increased duration for smoother transition
-  
-                  // Calculate traversed and non-traversed routes
-                  const traversedRoute = turf.lineSlice(
-                    turf.point(fullRoute[0]),
-                    turf.point(snappedPosition),
-                    routeLine
-                  );
-                  const nonTraversedRoute = turf.lineSlice(
-                    turf.point(snappedPosition),
-                    turf.point(fullRoute[fullRoute.length - 1]),
-                    routeLine
-                  );
-  
-                  setTraversedRoute(traversedRoute.geometry.coordinates);
-                  setNonTraversedRoute(nonTraversedRoute.geometry.coordinates);
-  
-                  // Check if the car is off the route
-                  const distanceFromRoute = turf.distance(userPoint, snapped, { units: 'meters' });
-  
-                  // If the car is more than 30 meters off the route, recalculate
-                  if (distanceFromRoute > 30 && speed > 0) {
-                    recalculateRoute(actualPosition); // Trigger route recalculation
-                  } else {
-                    setCurrentPosition(snappedPosition); // Update current position if within the route
-  
-                    // Calculate the remaining distance to the destination
-                    const remainingRoute = turf.lineSlice(
-                      turf.point(snappedPosition),
-                      turf.point(fullRoute[fullRoute.length - 1]),
-                      routeLine
-                    );
-                    const remainingDistanceInMeters = turf.length(remainingRoute, { units: 'meters' });
-  
-                    // Convert remaining distance to kilometers and update state
-                    setRemainingDistance((remainingDistanceInMeters / 1000).toFixed(2)); // in km
-  
-                    // Update remaining duration based on speed or route duration
-                    const averageSpeed = speedKmPerHour || (totalDistance / totalDuration) * 3.6; // km/h
-                    const remainingDurationInSeconds = (remainingDistanceInMeters / 1000) / averageSpeed * 3600; // in seconds
-                    setRemainingDuration(remainingDurationInSeconds);
-                  }
-  
-                  // Update the distance to the next maneuver
-                  if (instructions.length > 0 && currentStepIndex < instructions.length) {
-                    const currentStep = instructions[currentStepIndex];
-                    const maneuverPoint = currentStep.maneuver.location;
-  
-                    const distanceToNextManeuver = turf.distance(
-                      turf.point(snappedPosition),
-                      turf.point(maneuverPoint),
-                      { units: 'meters' }
-                    );
-                    setDistanceToNextManeuver(distanceToNextManeuver);
-  
-                    // Move to the next step if within 10 meters of the current maneuver
-                    if (distanceToNextManeuver < 10) {
-                      if (currentStepIndex + 1 < instructions.length) {
-                        setCurrentStepIndex(currentStepIndex + 1);
-                        setCurrentInstruction(
-                          `${instructions[currentStepIndex + 1].maneuver.instruction} onto ${instructions[currentStepIndex + 1].name}`
-                        );
-                      } else {
-                        setShowModal(true); // Show destination modal when the route is complete
-                      }
-                    }
-                  }
-                } else {
-                  // If snapping fails, use the actual position
-                  setCurrentPosition(actualPosition);
-                }
-              } else {
-                // No route available, just track the user's position
-                setCurrentPosition(actualPosition);
-              }
-            }}
-            locationPuck={{
-              type: 'circle',
-              circleColor: 'blue',
-              circleRadius: 10,
-              opacity: 0.8,
-            }}
-          />
+ 
+ <MapboxGL.UserLocation
+  visible={true}
+  showsUserHeadingIndicator={true}
+  onUpdate={async (location) => {
+    try {
+      const { longitude, latitude, speed } = location.coords;
+      const gpsPosition = [longitude, latitude];
+
+      console.log(`Received GPS Location: ${gpsPosition}`);
+
+      // Convert speed from m/s to km/h
+      const speedKmPerHour = speed ? (speed * 3.6).toFixed(1) : 0;
+      setSpeed(speedKmPerHour);
+
+      if (fullRoute.length > 0) {
+        const routeLine = turf.lineString(fullRoute);
+
+        // Attempt to snap the user’s GPS location to the nearest road
+        let snappedPosition;
+        try {
+          snappedPosition = await matchLocationToRoad(longitude, latitude);
+        } catch (err) {
+          console.warn('Failed to snap to road. Falling back to GPS position.');
+          snappedPosition = gpsPosition; // Fallback to original GPS position
+        }
+
+        console.log(`Using Snapped Position: ${snappedPosition}`);
+
+        // Animate the transition for smooth movement
+        animateTransition(currentPosition, snappedPosition, 500);
+
+        // Use the snapped position for rendering and updating state
+        setCurrentPosition(snappedPosition);
+
+        // Calculate the traversed and non-traversed parts of the route
+        const traversedRoute = turf.lineSlice(
+          turf.point(fullRoute[0]),
+          turf.point(snappedPosition),
+          routeLine
+        );
+
+        const nonTraversedRoute = turf.lineSlice(
+          turf.point(snappedPosition),
+          turf.point(fullRoute[fullRoute.length - 1]),
+          routeLine
+        );
+
+        setTraversedRoute(traversedRoute.geometry.coordinates);
+        setNonTraversedRoute(nonTraversedRoute.geometry.coordinates);
+
+        // Check if the user is off the route by more than 30 meters
+        const distanceFromRoute = turf.distance(
+          turf.point(gpsPosition),
+          turf.nearestPointOnLine(routeLine, turf.point(gpsPosition)),
+          { units: 'meters' }
+        );
+
+        console.log(`Distance from Route: ${distanceFromRoute.toFixed(2)} meters`);
+
+        if (distanceFromRoute > 30 && speed > 0) {
+          console.log('Off-route detected. Recalculating route...');
+          recalculateRoute(snappedPosition); // Recalculate if off-route
+        }
+
+        // Update the distance to the next maneuver
+        if (instructions.length > 0 && currentStepIndex < instructions.length) {
+          const currentStep = instructions[currentStepIndex];
+          const maneuverPoint = currentStep.maneuver.location;
+
+          const distanceToNextManeuver = turf.distance(
+            turf.point(snappedPosition),
+            turf.point(maneuverPoint),
+            { units: 'meters' }
+          );
+
+          setDistanceToNextManeuver(distanceToNextManeuver);
+
+          if (distanceToNextManeuver < 10 && currentStepIndex + 1 < instructions.length) {
+            setCurrentStepIndex(currentStepIndex + 1);
+            setCurrentInstruction(
+              `${instructions[currentStepIndex + 1].maneuver.instruction} onto ${instructions[currentStepIndex + 1].name}`
+            );
+          }
+        }
+      } else {
+        // If no route is available, just use the GPS position
+        setCurrentPosition(gpsPosition);
+      }
+    } catch (error) {
+      console.error('Error in onUpdate handler:', error);
+    }
+  }}
+  locationPuck={{
+    type: 'circle',
+    circleColor: 'blue',
+    circleRadius: 10,
+    opacity: 0.8,
+  }}
+/>
+
   
           {/* Destination and Stop Points */}
           {destination && (
@@ -916,26 +1035,36 @@ const formatDuration = (durationInSeconds) => {
           </View>
           <Ionicons color="black" name={isDropdownOpen ? 'chevron-up-outline' : 'chevron-down-outline'} size={30} />
         </TouchableOpacity>
-  
         <Animated.View style={[styles.turnList, { height: dropdownHeight }]}>
-          {isDropdownOpen && (
-            <FlatList
-              data={remainingInstructions}
-              keyExtractor={(item, index) => `instruction_${currentStepIndex + index}`}
-              renderItem={({ item }) => (
-                <View style={styles.turnCard}>
-                  <Ionicons name={getManeuverIcon(item.maneuver.instruction)} size={30} color="black" />
-                  <View style={styles.turnCardText}>
-                    <Text style={styles.turnCardDistance}>{Math.round(item.distance)} m</Text>
-                    <Text style={styles.turnCardRoad}>{item.name || 'Unknown Road'}</Text>
-                  </View>
-                </View>
-              )}
-              contentContainerStyle={{ paddingBottom: 10 }}
-            />
-          )}
-        </Animated.View>
-  
+  <FlatList
+    data={remainingInstructions}
+    keyExtractor={(item, index) => `instruction_${currentStepIndex + index}`}
+    renderItem={({ item }) => (
+      <View style={styles.turnCard}>
+        <Ionicons 
+          name={getManeuverIcon(item.maneuver.instruction)} 
+          size={30} 
+          color="black" 
+        />
+        <View style={styles.turnCardText}>
+          <Text style={styles.turnCardDistance}>
+            {`${Math.round(item.distance)} m`}
+          </Text>
+          <Text style={styles.turnCardRoad}>
+            {item.name || 'Unknown Road'}
+          </Text>
+        </View>
+      </View>
+    )}
+    contentContainerStyle={{ paddingBottom: 10 }}
+    ListEmptyComponent={() => (
+      <View style={styles.emptyList}>
+        <Text style={styles.emptyText}>No remaining instructions</Text>
+      </View>
+    )}
+  />
+</Animated.View>
+
         {/* BottomSheet */}
         <BottomSheet
           ref={bottomSheetRef}
@@ -956,7 +1085,7 @@ const formatDuration = (durationInSeconds) => {
             
             <Text style={styles.summaryText}>
             <MaterialCommunityIcons name="gas-station" size={24} color="red"/> {estimatedFuelConsumption} L  
-            <MaterialCommunityIcons name="road" size={20} color="blue"/>{remainingDistance ? `${remainingDistance} km` : '...'} <MaterialCommunityIcons name="bus-clock" size={20} color="blue"/>{formatDuration(remainingDuration)}
+            <MaterialCommunityIcons name="road" size={20} color="blue"/>{remainingDistance ? `${remainingDistance.toFixed(2)} km` : '...'} <MaterialCommunityIcons name="bus-clock" size={20} color="blue"/>{formatDuration(remainingDuration)}
             </Text>
            
    

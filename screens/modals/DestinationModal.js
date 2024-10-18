@@ -420,16 +420,12 @@ useEffect(() => {
     }, []);
 
     return (
+ 
 
-        
-        <Modal
-        animationType="slide"
-        transparent={false}
-        visible={visible}
-        onRequestClose={handleCloseModal}
-    >
-        
-    
+
+        <View style={styles.container}>
+
+                
     {/* Display spinner and "Please wait" while loading */}
     {loadingRoutes && (
         <View style={styles.loadingSpinnerContainer}>
@@ -439,8 +435,6 @@ useEffect(() => {
             </View>
         </View>
     )}
-
-        <View style={styles.container}>
             {destination && (
                 <MapboxGL.MapView 
                     style={styles.map} 
@@ -609,7 +603,7 @@ useEffect(() => {
 </View>
  
         </View>
-    </Modal>
+ 
     
     );
 };

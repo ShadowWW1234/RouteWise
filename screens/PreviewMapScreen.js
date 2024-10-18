@@ -9,24 +9,26 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 MapboxGL.setAccessToken(MAPBOX_API_TOKEN);
 
 const PreviewMapScreen = ({ route }) => {
-    const { origin, destination, route: selectedRoute } = route.params || {}; // Extract params
+    const { origin, destination, route: selectedRoute } = route.params || {};  // Extract parameters
     const [currentStepIndex, setCurrentStepIndex] = useState(0); // Track the current turn instruction
     const [isExpanded, setIsExpanded] = useState(true); // Start with the combo box expanded
     const [selectedInstruction, setSelectedInstruction] = useState(null); // Store selected instruction
     const cameraRef = useRef(null);  // Initialize cameraRef using useRef
-    console.log('Origin:', origin);
-    console.log('Destination:', destination);
-    console.log('Selected Route:', selectedRoute);
+   
+   
+    console.log('Selected Route in PreviewMapScreen:', selectedRoute);
+    console.log('Route Coordinates:', selectedRoute.coordinates);
+    
 
-
-    if (!origin || !destination || !selectedRoute) {
+    if (!selectedRoute || !selectedRoute.coordinates || selectedRoute.coordinates.length === 0) {
         return (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                <Text style={{ color: 'red' }}>Error: Missing required parameters</Text>
-            </View>
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            <Text style={{ color: 'red' }}>Error: No route coordinates available</Text>
+          </View>
         );
-    }
-
+      }
+      
+      
     // Focus camera on a given location
     const focusOnLocation = (location) => {
         if (cameraRef.current && location) {

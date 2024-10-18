@@ -6,10 +6,11 @@ import VehicleTypeSelection from './modals/VehicleTypeSelection';
 import SearchBar from '../screens/modals/SearchBar';
 import MapScreen from '../screens/MapScreen';
 import SideBar from '../screens/SideBar';
-import DestinationModal from '../screens/modals/DestinationModal';
+import DestinationScreen from './DestinationScreen';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { GasConsumptionContext } from '../screens/context/GasConsumptionProvider';
 import SQLite from 'react-native-sqlite-storage';
+import { useNavigation } from '@react-navigation/native'; // Import useNavigation
 
 const SearchScreen = () => {
   const [isSearchModalVisible, setSearchModalVisible] = useState(false);
@@ -84,14 +85,26 @@ const SearchScreen = () => {
   }, []);
   
   
-  // Handle place selection from the SearchBar
   const handlePlaceSelect = (origin, destination) => {
     setSelectingOrigin(origin);
     setSelectedDestination(destination);
     setSearchModalVisible(false);
-    setDestinationModalVisible(true);
-    console.log('Destination selected:', destination);
+
+    // Navigate to the DestinationScreen with origin and destination params
+    navigation.navigate('DestinationScreen', {
+      origin,
+      destination,
+    });
   };
+
+  if (isLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#0000ff" />
+        <Text>Loading...</Text>
+      </View>
+    );
+  }
 
   // Toggle search modal
   const toggleSearchModal = () => {
@@ -169,17 +182,7 @@ const SearchScreen = () => {
         <TouchableOpacity>
           <Ionicons name="mic" size={24} color="white" style={styles.micIcon} />
         </TouchableOpacity>
-      </View>
-
-      {/* DestinationModal */}
-      <DestinationModal
-        visible={isDestinationModalVisible}
-        toggleModal={toggleDestinationModal}
-        destination={selectedDestination}
-        origin={selectedOrigin}
-        resetSearch={() => setSearchModalVisible(false)} // Reset search when modal closes
-        gasConsumption={gasConsumption}
-      />
+      </View> 
     </SafeAreaView>
   );
 };

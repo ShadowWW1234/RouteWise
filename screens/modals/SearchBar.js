@@ -10,6 +10,7 @@ import {  MAPBOX_API_TOKEN } from '@env';
 import { GestureHandlerRootView, ScrollView } from 'react-native-gesture-handler';
 import SQLite from 'react-native-sqlite-storage';
 import { GasConsumptionContext } from '../context/GasConsumptionProvider';
+import { useNavigation } from '@react-navigation/native';
 
  
 const SearchBar = ({ modalVisible, toggleModal }) => {
@@ -29,6 +30,7 @@ const SearchBar = ({ modalVisible, toggleModal }) => {
   const { gasConsumption, setGasConsumption } = useContext(GasConsumptionContext); // Access the context
 
   const dispatch = useDispatch();
+  const navigation = useNavigation(); // Initialize navigation
 
   useEffect(() => {
     if (modalVisible) {
@@ -110,37 +112,29 @@ useEffect(() => {
       );
     });
   };
-  // Handle place selection for origin
+ 
   const handleOriginSelect = (place) => {
     const { center, place_name } = place;
-    const originLocation = {
-      latitude: center[1],
-      longitude: center[0],
-      description: place_name,
-    };
-
-    dispatch(setOrigin(originLocation)); // Set origin in Redux
-    setOriginSearchText(place_name); // Update the origin searchText with the place name
-    setSelectedOrigin(originLocation); // Store the origin locally
-    setOriginSet(true); // Set originSet to true when origin is selected
-   setOriginSearchResults([]);
+    const originLocation = { latitude: center[1], longitude: center[0], description: place_name };
+    dispatch(setOrigin(originLocation));
+    setSelectedOrigin(originLocation);
+    setOriginSearchText(place_name);
+    setOriginSet(true);
+    setOriginSearchResults([]);
   };
 
-  // Handle place selection for destination
+
   const handleDestinationSelect = (place) => {
     const { center, place_name } = place;
-    const destinationLocation = {
-      latitude: center[1],
-      longitude: center[0],
-      description: place_name,
-    };
+    const destinationLocation = { latitude: center[1], longitude: center[0], description: place_name };
+    dispatch(setDestination(destinationLocation));
+    setSelectedDestination(destinationLocation);
+    setDestinationSearchText(place_name);
+    setDestinationSearchResults([]);
 
-    dispatch(setDestination(destinationLocation)); // Set destination in Redux
-    setDestinationSearchText(place_name); // Update the destination searchText with the place name
-    setSelectedDestination(destinationLocation); // Store the destination locally
-
-    setDestinationModalVisible(true); // Open the destination modal
-   setDestinationSearchResults([]);
+    // Navigate to DestinationScreen with origin and destination as parameters
+    navigation.navigate('DestinationScreen', { origin: selectedOrigin, destination: destinationLocation });
+    toggleModal(); // Close the SearchBar modal
   };
 
    // Handle map selection for origin (from the "Map Selection" modal)

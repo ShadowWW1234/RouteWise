@@ -13,6 +13,8 @@ import NavigationScreen from './screens/NavigationScreen';
 import StopSearchScreen from './screens/modals/StopSearchScreen';
 import PreviewMapScreen from './screens/PreviewMapScreen'
 import { GasConsumptionProvider  } from './screens/context/GasConsumptionProvider';
+import DestinationScreen from './screens/DestinationScreen';
+
 // Create Stack Navigator
 const Stack = createNativeStackNavigator();
 
@@ -121,7 +123,11 @@ const App = () => {
               component={PreviewMapScreen}
               options={{ headerShown: true,title:'Preview',  headerTitleAlign: 'center' }}
             />
-            
+             <Stack.Screen 
+          name="DestinationScreen" 
+          component={DestinationScreen} 
+          options={{ headerShown: false }} // Hide the header for a full-screen look
+        />
           </Stack.Navigator>
         </NavigationContainer>
       </MapStyleProvider>

@@ -37,24 +37,24 @@ const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch
     };
 
 
-    
     useEffect(() => {
         // Try to get the user's current location
         Geolocation.getCurrentPosition(
-            (position) => {
-                setUserLocation({
-                    latitude: position.coords.latitude,
-                    longitude: position.coords.longitude,
-                });
-            },
-            (error) => {
-                console.error('Error getting location:', error);
-                // If location retrieval fails, set to preview mode
-                setIsPreviewMode(true);
-            },
-            { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+          (position) => {
+            setUserLocation({
+              latitude: position.coords.latitude,
+              longitude: position.coords.longitude,
+            });
+          },
+          (error) => {
+            console.error('Error getting location:', error);
+            // Switch to preview mode if location retrieval fails
+            setIsPreviewMode(true);
+          },
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
         );
-    }, []);
+      }, []);
+    
 
    
 
@@ -139,39 +139,35 @@ const DestinationModal = ({ visible, toggleModal, destination,origin,resetSearch
     
     useEffect(() => {
         if (userLocation && origin) {
-            const distanceToOrigin = calculateDistance(
-                userLocation.latitude,
-                userLocation.longitude,
-                origin.latitude,
-                origin.longitude
-            );
-    
-            // Switch to preview mode if the distance is greater than the threshold
-            if (distanceToOrigin > previewDistanceThreshold) {
-                setIsPreviewMode(true);
-            } else {
-                setIsPreviewMode(false); // Otherwise, exit preview mode
-            }
+          const distanceToOrigin = calculateDistance(
+            userLocation.latitude,
+            userLocation.longitude,
+            origin.latitude,
+            origin.longitude
+          );
+          if (distanceToOrigin > previewDistanceThreshold) {
+            setIsPreviewMode(true);
+          } else {
+            setIsPreviewMode(false);
+          }
         }
-    }, [userLocation, origin]);
-   
-    const handleGoOrPreview = () => {
+      }, [userLocation, origin]);
+    
+      const handleGoOrPreview = () => {
         if (!isRouteFetched) {
-            handleGoNow(); // Fetch routes and display them
+          handleGoNow();
         } else if (isPreviewMode) {
-            // Navigate to preview mode
-            navigation.navigate('PreviewMapScreen', {
-                origin,
-                destination,
-                route: routes[selectedRouteIndex], // Pass the selected route
-            });
-            toggleModal(); // Close the DestinationModal
+          // Navigate to preview mode
+          navigation.navigate('PreviewMapScreen', {
+            origin,
+            destination,
+            route: routes[selectedRouteIndex],
+          });
+          toggleModal();
         } else {
-            handleGoNow();  // Proceed to regular navigation if not in preview mode
+          handleGoNow(); // Proceed to regular navigation
         }
-    };
-    
- 
+      };
 
     const handleCloseModal = () => {
         resetState();  // Reset local state in DestinationModal

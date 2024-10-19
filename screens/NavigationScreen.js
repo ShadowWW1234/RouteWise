@@ -142,8 +142,7 @@ const NavigationScreen = ({ route, navigation }) => {
   const previousPosition = useRef(null); // Use ref to persist across renders
 
  
-  const proximityThreshold = 10; // 100 meters from the destination
-
+  const proximityThreshold = 70;  
   // Effect to handle new stops added from StopSearchScreen
   useEffect(() => {
     if (route.params?.newStop) {
@@ -163,10 +162,7 @@ const NavigationScreen = ({ route, navigation }) => {
     return null;  // No congestion
   };
   
-  const throttledGPSUpdate = throttle((location, processGPSData) => {
-    processGPSData(location);
-  }, 3000); // Update every 3 seconds
-  
+ 
   // Function to check if the user is off-route
   const checkIfOffRoute = (currentPosition, route) => {
     if (!currentPosition || !Array.isArray(route) || route.length === 0) return false;
@@ -265,29 +261,129 @@ const handleFinishRoute = () => {
 };
 
 
-  // Function to recalculate route when off-route
-  const recalculateRoute = async (currentPosition) => {
-    if (!currentPosition || !destination) {
-      console.error('Invalid input: Current position or destination is missing.');
-      return;
+ // Function to recalculate route when off-route
+const recalculateRoute = async (currentPosition) => {
+  if (!currentPosition || !destination) {
+    console.error('Invalid input: Current position or destination is missing.');
+    return;
+  }
+
+  if (isRecalculating) {
+    console.warn('Already recalculating, please wait.');
+    return;
+  }
+
+  setIsRecalculating(true);
+  try {
+    // Start from currentPosition and recalculate the route including stops
+    const originCoordinates = `${currentPosition[0]},${currentPosition[1]}`;
+    const destinationCoordinates = `${destination.longitude},${destination.latitude}`;
+
+    // Create the coordinates array including stops
+    const coordinatesArray = [
+      originCoordinates,
+      ...stops.map(stop => `${stop.longitude},${stop.latitude}`),
+      destinationCoordinates,
+    ];
+
+    const response = await axios.get(
+      `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${coordinatesArray.join(';')}`,
+      {
+        params: {
+          access_token: MAPBOX_API_TOKEN,
+          steps: true,
+          geometries: 'geojson',
+          overview: 'full',
+          annotations: 'congestion_numeric',
+        },
+      }
+    );
+
+    const routeData = response.data.routes[0];
+    if (!routeData) throw new Error('No route data received.');
+
+    // Update the route with the new recalculated route data
+    setFullRoute(routeData.geometry.coordinates);
+    setInstructions(routeData.legs.flatMap(leg => leg.steps)); // Set step-by-step instructions
+
+    // Calculate ETA based on the recalculated duration
+    const etaTime = calculateETA(routeData.duration);
+    setEta(etaTime);
+    setCurrentRoadName(routeData.legs[0].summary);
+
+    // Update distance and duration
+    setTotalDistance(routeData.distance);
+    setRemainingDistance(routeData.distance);
+    setTotalDuration(routeData.duration);
+    setRemainingDuration(routeData.duration);
+
+    // Save the recalculated route data to AsyncStorage
+    saveRouteToStorage(routeData, routeData.legs.flatMap(leg => leg.steps), etaTime, routeData.legs[0].summary);
+
+    // Process the congestion data for the recalculated route
+    if (
+      routeData.annotations &&
+      Array.isArray(routeData.annotations.congestion_numeric)
+    ) {
+      const congestionData = routeData.annotations.congestion_numeric;
+
+      const segments = routeData.geometry.coordinates.map((coord, i) => {
+        if (i === routeData.geometry.coordinates.length - 1) return null;
+
+        const congestionValue = congestionData[i];
+        const [lon1, lat1] = coord;
+        const [lon2, lat2] = routeData.geometry.coordinates[i + 1];
+
+        const congestionColor = getCongestionColor(congestionValue);
+        if (!congestionColor) return null;
+
+        return {
+          type: 'Feature',
+          geometry: {
+            type: 'LineString',
+            coordinates: [
+              [lon1, lat1],
+              [lon2, lat2],
+            ],
+          },
+          properties: { color: congestionColor },
+        };
+      }).filter(segment => segment !== null);
+
+      setCongestionSegments(segments); // Set the congestion segments
+    } else {
+      console.warn('No congestion data available in recalculated route annotations.');
+      setCongestionSegments([]); // Clear any existing congestion segments
     }
 
-    if (isRecalculating) {
-     // console.warn('Already recalculating, please wait.');
+  } catch (error) {
+    console.error('Error recalculating route:', error);
+  } finally {
+    setIsRecalculating(false);
+  }
+};
+
+
+  const fetchDirections = async () => {
+    if (!route?.params?.origin || !route?.params?.destination) {
+      console.error('Missing origin or destination.');
       return;
     }
-
-    setIsRecalculating(true);
+  
+    const { origin, destination } = route.params;
+  
     try {
-      const originCoordinates = `${currentPosition[0]},${currentPosition[1]}`;
+      // Construct the coordinates array (including stops if available)
+      const originCoordinates = `${origin.longitude},${origin.latitude}`;
       const destinationCoordinates = `${destination.longitude},${destination.latitude}`;
-
-      const coordinatesArray = [
-        originCoordinates,
-        ...stops.map(stop => `${stop.longitude},${stop.latitude}`),
-        destinationCoordinates,
-      ];
-
+      
+      // Create an array of stop coordinates
+      const stopCoordinates = stops.map((stop) => `${stop.longitude},${stop.latitude}`);
+  
+      // Combine origin, stop(s), and destination into a single array for the request
+      const coordinatesArray = [originCoordinates, ...stopCoordinates, destinationCoordinates];
+  
+      // Make the Mapbox Directions API request with waypoints (including stops)
       const response = await axios.get(
         `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${coordinatesArray.join(';')}`,
         {
@@ -300,79 +396,6 @@ const handleFinishRoute = () => {
           },
         }
       );
-
-      const routeData = response.data.routes[0];
-      if (!routeData) throw new Error('No route data received.');
-
-      setFullRoute(routeData.geometry.coordinates);
-      setInstructions(routeData.legs.flatMap(leg => leg.steps));
-      const etaTime = calculateETA(routeData.duration);
-      setEta(etaTime);
-      setCurrentRoadName(routeData.legs[0].summary);
-
-      // Set total distance and remaining distance in meters
-      setTotalDistance(routeData.distance);
-      setRemainingDistance(routeData.distance);
-      setTotalDuration(routeData.duration);
-      setRemainingDuration(routeData.duration);
-
-      // Save to storage
-      saveRouteToStorage(routeData, routeData.legs.flatMap(leg => leg.steps), etaTime, routeData.legs[0].summary);
-
-      // Process congestion data
-      if (
-        routeData.annotations &&
-        Array.isArray(routeData.annotations.congestion_numeric)
-      ) {
-        const congestionData = selectedRoute?.annotations?.congestion_numeric || [];
-
-        const segments = routeData.geometry.coordinates.map((coord, i) => {
-          if (i === routeData.geometry.coordinates.length - 1) return null;
-
-          const congestionValue = congestionData[i];
-          const [lon1, lat1] = coord;
-          const [lon2, lat2] = routeData.geometry.coordinates[i + 1];
-
-          const congestionColor = getCongestionColor(congestionValue);
-          if (!congestionColor) return null;
-
-          return {
-            type: 'Feature',
-            geometry: {
-              type: 'LineString',
-              coordinates: [
-                [lon1, lat1],
-                [lon2, lat2],
-              ],
-            },
-            properties: { color: congestionColor },
-          };
-        }).filter(segment => segment !== null);
-
-        setCongestionSegments(segments);
-      } else {
-      //  console.warn('No congestion data available in recalculated route annotations.');
-        setCongestionSegments([]); // Clear any existing congestion segments
-      }
-
-    } catch (error) {
-      console.error('Error recalculating route:', error);
-    } finally {
-      setIsRecalculating(false);
-    }
-  };
-  const fetchDirections = async () => {
-    if (!route?.params?.origin || !route?.params?.destination) {
-      console.error('Missing origin or destination.');
-      return;
-    }
-  
-    const { origin, destination } = route.params;
-  
-    try {
-      const response = await axios.get(
-        `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${origin.longitude},${origin.latitude};${destination.longitude},${destination.latitude}?alternatives=true&annotations=closure%2Cmaxspeed%2Ccongestion_numeric%2Ccongestion%2Cspeed%2Cdistance%2Cduration&exclude=ferry%2Cunpaved&geometries=geojson&language=en&overview=full&steps=true&access_token=${MAPBOX_API_TOKEN}`
-      );
   
       const routeData = response.data.routes[0]; // Fetch the first route
       setFullRoute(routeData.geometry.coordinates); // Set full route coordinates
@@ -383,7 +406,7 @@ const handleFinishRoute = () => {
         setCurrentInstruction(routeData.legs[0].steps[0].maneuver.instruction);
       }
   
-      // Check if congestion data exists
+      // Handle congestion data (if available)
       if (routeData.legs && routeData.legs[0].annotation && routeData.legs[0].annotation.congestion_numeric) {
         const congestionLevels = routeData.legs[0].annotation.congestion_numeric;
   
@@ -413,7 +436,6 @@ const handleFinishRoute = () => {
   
         setCongestionSegments(segments); // Set the congestion segments
       } else {
-       // console.warn('No congestion data available.');
         setCongestionSegments([]); // Clear congestion segments if none are available
       }
   
@@ -628,22 +650,34 @@ const handleFinishRoute = () => {
     }  
   }, [currentPosition, fullRoute, gasConsumption]);
  
-  // Effect to show modal when destination is reached
-  useEffect(() => {
-    if (isDestinationReached) {
-      setIsFinishRouteSheetVisible(true); // Show the "Finish Route" bottom sheet
-    }
-  }, [isDestinationReached]);
+// Effect to show/hide the bottom sheet for destination reached
+useEffect(() => {
+  if (isDestinationReached) {
+    setIsFinishRouteSheetVisible(true); // Show the "Finish Route" bottom sheet when reached
+    console.log("Opening destination reached bottom sheet.");
+  } else {
+    setIsFinishRouteSheetVisible(false); // Hide the sheet if destination is not reached
+    console.log("Closing destination reached bottom sheet.");
+  }
+}, [isDestinationReached]);
+
 // Check if destination is reached based on remaining distance
 useEffect(() => {
-  if (remainingDistance < proximityThreshold) {
-      // If the user is near the destination, show the Finish Route bottom sheet
-      setIsFinishRouteSheetVisible(true);
-  } else {
-      // If the user moves away from the destination, hide the Finish Route bottom sheet
-      setIsFinishRouteSheetVisible(false);
+  if (remainingDistance > 0) {
+    console.log(`Checking remaining distance: ${remainingDistance} meters`);
+
+    if (remainingDistance < proximityThreshold) {
+      // Mark destination as reached only when very close (use a tight threshold)
+      setIsDestinationReached(true);
+      console.log(`Destination reached, within ${remainingDistance} meters`);
+    } else {
+      // Ensure destination is not marked as reached if the distance is still significant
+      setIsDestinationReached(false);
+      console.log('Still en route, destination not yet reached.');
+    }
   }
-}, [remainingDistance]); // Recalculate when remaining distance changes
+}, [remainingDistance, proximityThreshold]);
+
 
   const debouncedMatchLocationToRoad = useCallback(debounce(async (longitude, latitude) => {
     try {
@@ -653,6 +687,8 @@ useEffect(() => {
       return null;
     }
   }, 3000), []); // 3-second debounce
+
+
   const handleLocationUpdate = useCallback(async (location) => {
     const { longitude, latitude, speed } = location.coords;
     const gpsPosition = [longitude, latitude];
@@ -708,66 +744,68 @@ useEffect(() => {
     }
   }, [currentPosition, fullRoute, recalculateRoute]);
   
-  // Effect to update remaining distance, duration, and ETA based on speed
-  useEffect(() => {
-    if (currentPosition && fullRoute.length > 0) {
-      const routeLine = turf.lineString(fullRoute);
+ // Effect to update remaining distance, duration, and ETA based on speed
+useEffect(() => {
+  if (currentPosition && fullRoute.length > 0) {
+    const routeLine = turf.lineString(fullRoute);
 
-      // Calculate the remaining distance
-      const nonTraversedRoute = turf.lineSlice(
-        turf.point(currentPosition),
-        turf.point(fullRoute[fullRoute.length - 1]),
-        routeLine
-      );
+    // Calculate the remaining distance
+    const nonTraversedRoute = turf.lineSlice(
+      turf.point(currentPosition),
+      turf.point(fullRoute[fullRoute.length - 1]), // Destination
+      routeLine
+    );
 
-      const remainingDistanceInMeters = turf.length(nonTraversedRoute, { units: 'meters' });
-      setRemainingDistance(remainingDistanceInMeters); // Keep in meters
-
-      // Calculate total distance
-      const totalDistanceInMeters = turf.length(routeLine, { units: 'meters' });
-
-      // Calculate traversed distance
-      const traversedDistanceInMeters = totalDistanceInMeters - remainingDistanceInMeters;
-      setRouteProgress(traversedDistanceInMeters / totalDistanceInMeters);
-
-      // Calculate remaining duration based on user's actual speed
-      if (speed > 5) { // Using a threshold to avoid unrealistic durations
-        const remainingDurationInSeconds = (remainingDistanceInMeters / 1000) / speed * 3600; // Convert km and speed to seconds
-        setRemainingDuration(remainingDurationInSeconds);
-      } else {
-        // Fallback to route's estimated duration if speed is too low
-        const remainingDurations = instructions.slice(currentStepIndex).reduce(
-          (sum, step) => sum + step.duration,
-          0
-        );
-        setRemainingDuration(remainingDurations);
-      }
-
-      // Update ETA based on the new remaining duration
-      if (remainingDuration > 0) {
-        const newEta = calculateETA(remainingDuration);
-        setEta(newEta);
-      }
-
-      // Check if destination is reached based on remaining distance
-      if (remainingDistanceInMeters < proximityThreshold) {
-        setIsDestinationReached(true);
-      }
-    }
-  }, [currentPosition, speed, instructions, currentStepIndex, remainingDuration, proximityThreshold]);
-
-  // Function to convert duration in seconds to a readable format
-  const formatDuration = (durationInSeconds) => {
-    const minutes = Math.floor(durationInSeconds / 60); // Calculate minutes
-    const hours = Math.floor(minutes / 60); // Calculate hours
-    const remainingMinutes = minutes % 60; // Remaining minutes
-
-    if (hours > 0) {
-      return `${hours} hr ${remainingMinutes} min`; // Show hours and minutes
+    const remainingDistanceInMeters = turf.length(nonTraversedRoute, { units: 'meters' });
+    
+    if (!isNaN(remainingDistanceInMeters)) {
+      setRemainingDistance(remainingDistanceInMeters); // Update remaining distance
+      console.log(`Remaining distance: ${remainingDistanceInMeters} meters`);
     } else {
-      return `${remainingMinutes} min`; // Only minutes
+      console.error('Invalid remaining distance calculated.');
     }
-  };
+
+    // Calculate total distance (from start to end of the route)
+    const totalDistanceInMeters = turf.length(routeLine, { units: 'meters' });
+    console.log(`Total route distance: ${totalDistanceInMeters} meters`);
+
+    // Calculate traversed distance
+    const traversedDistanceInMeters = totalDistanceInMeters - remainingDistanceInMeters;
+    setRouteProgress(traversedDistanceInMeters / totalDistanceInMeters); // Update route progress
+    console.log(`Traversed distance: ${traversedDistanceInMeters} meters`);
+
+    // Calculate remaining duration based on user's actual speed
+    if (speed > 5) { // Use a threshold to avoid unrealistic durations
+      const remainingDurationInSeconds = (remainingDistanceInMeters / 1000) / speed * 3600; // Convert to seconds
+      setRemainingDuration(remainingDurationInSeconds);
+      console.log(`Remaining duration: ${remainingDurationInSeconds} seconds`);
+    } else {
+      // Fallback to route's estimated duration if speed is too low
+      const remainingDurations = instructions.slice(currentStepIndex).reduce(
+        (sum, step) => sum + step.duration,
+        0
+      );
+      setRemainingDuration(remainingDurations);
+      console.log(`Fallback remaining duration: ${remainingDurations} seconds`);
+    }
+
+    // Update ETA based on the new remaining duration
+    if (remainingDuration > 0) {
+      const newEta = calculateETA(remainingDuration);
+      setEta(newEta);
+      console.log(`Estimated Time of Arrival: ${newEta}`);
+    }
+
+    // Check if destination is reached based on remaining distance
+    if (remainingDistanceInMeters < proximityThreshold) {
+      setIsDestinationReached(true);
+      console.log(`Destination reached, within ${remainingDistanceInMeters} meters`);
+    } else {
+      setIsDestinationReached(false);
+      console.log('Still en route, destination not yet reached.');
+    }
+  }
+}, [currentPosition, speed, instructions, currentStepIndex, remainingDuration, proximityThreshold, fullRoute]);
 
   
   const toggleDropdown = () => {

@@ -112,23 +112,31 @@ useEffect(() => {
   };
 
   useEffect(() => {
-    const getLocation = async () => {
-      Geolocation.getCurrentPosition(
-        position => {
-          setCurrentLocation({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          });
-        },
-        error => console.error('Error getting location:', error),
-        { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
-      );
+    const watchId = Geolocation.watchPosition(
+      (position) => {
+        setCurrentLocation({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+        console.log('Updated Current Location:', {
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+      },
+      (error) => {
+        console.error('Error watching location:', error);
+        setCurrentLocation(initialOrigin); // Fallback to initial origin if there's an error
+      },
+      { enableHighAccuracy: true, distanceFilter: 10, interval: 5000, fastestInterval: 2000 }
+    );
+  
+    return () => {
+      if (watchId !== null) {
+        Geolocation.clearWatch(watchId); // Clear the location watch when the component is unmounted
+      }
     };
+  }, [initialOrigin]);
   
-    getLocation();
-  }, []);
-  
-
   // Update origin based on user location if far from the set origin
   useEffect(() => {
     if (currentLocation && initialOrigin) {
@@ -337,19 +345,21 @@ useEffect(() => {
 
   const handleGoOrPreview = () => {
     console.log('Selected Origin:', initialOrigin); // The origin selected from the search bar
-    console.log('Current Location:', currentLocation); // The user's current location
+    console.log('Current Location:', currentLocation); // The user's current location (or fallback to origin)
     console.log('Destination:', destination);
-    console.log('Selected Route:', routes[selectedRouteIndex]);
-  
+    
     if (!initialOrigin || !destination || !routes[selectedRouteIndex]) {
       console.error('Missing origin, destination, or selected route');
       return;
     }
   
+    // Use initialOrigin if currentLocation is null
+    const originForNavigation = currentLocation || initialOrigin;
+  
     // Check if the current location is within 50 meters of the selected origin
     const distanceToOrigin = getDistanceFromLatLonInKm(
-      currentLocation.latitude,
-      currentLocation.longitude,
+      originForNavigation.latitude,
+      originForNavigation.longitude,
       initialOrigin.latitude,
       initialOrigin.longitude
     ) * 1000; // Convert distance to meters
@@ -361,7 +371,7 @@ useEffect(() => {
       console.log('Navigating to NavigationScreen...');
   
       navigation.navigate('NavigationScreen', {
-        origin: currentLocation, // Use the user's current location as the origin
+        origin: originForNavigation, // Use the current location or fallback origin
         destination: destination, // Pass the destination
         route: routes[selectedRouteIndex], // Pass the selected route
       });
@@ -376,8 +386,6 @@ useEffect(() => {
       });
     }
   };
-  
-
   
   // Handle "View Routes" button click
   const handleViewRoutes = async () => {

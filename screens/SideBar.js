@@ -14,7 +14,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import AntDesign from 'react-native-vector-icons/AntDesign';
 import { MapStyleContext } from "./context/MapStyleContext"; 
 
-const SideBar = ({ onProfileChange,onToggleAlternative  }) => { // Add callback prop for profile changes
+const SideBar = ({ onProfileChange,onToggleAlternative,onToggleTrafficJam   }) => { // Add callback prop for profile changes
   // Toggle switches sidebar set to true by default
   const [isAlternativeEnabled, setAlternativeEnabled] = useState(true);
   const [isTrafficJamEnabled, setTrafficJamEnabled] = useState(true);
@@ -65,7 +65,7 @@ const SideBar = ({ onProfileChange,onToggleAlternative  }) => { // Add callback 
     onToggleAlternative(newValue); // Pass the toggle state to DestinationScreen
   };
 
-
+ 
   // Handle toggles and profile updates based on vehicle type
   useEffect(() => {
     if (isMotorcycleEnabled) {
@@ -124,17 +124,22 @@ const SideBar = ({ onProfileChange,onToggleAlternative  }) => { // Add callback 
   </View>
 </View>
 
-          <View style={tw`mb-4`}>
-            <View style={tw`flex-row items-center justify-between`}>
-              <Image source={require('../assets/traffic.png')} style={[tw`w-12 h-12`, { marginLeft: -8, marginRight: 8, marginTop: -5 }]} />
-              <Text style={tw`text-lg font-semibold flex-1 text-black`}>Traffic Jam</Text>
-              <Switch value={isTrafficJamEnabled}
-                trackColor={{ false: '#F44336', true: '#F44336' }}
-                thumbColor={isTrafficJamEnabled ? '#D32F2F' : '#f4f3f4'}
-                onValueChange={setTrafficJamEnabled}
-              />
-            </View>
-          </View>
+ <View style={tw`mb-4`}>
+      <View style={tw`flex-row items-center justify-between`}>
+        <Image source={require('../assets/traffic.png')} style={[tw`w-12 h-12`, { marginLeft: -8, marginRight: 8, marginTop: -5 }]} />
+        <Text style={tw`text-lg font-semibold flex-1 text-black`}>Traffic Jam</Text>
+        <Switch 
+          value={isTrafficJamEnabled}  // Ensure this state is controlling the visual toggle
+          trackColor={{ false: '#F44336', true: '#F44336' }}
+          thumbColor={isTrafficJamEnabled ? '#D32F2F' : '#f4f3f4'}
+          onValueChange={(value) => {
+            setTrafficJamEnabled(value); // Update the local state for visual feedback
+            onToggleTrafficJam(value);   // Call the parent handler to execute the logic
+          }}
+        />
+      </View>
+    </View>
+
 
           <View style={tw`mb-4`}>
             <View style={tw`flex-row items-center justify-between`}>

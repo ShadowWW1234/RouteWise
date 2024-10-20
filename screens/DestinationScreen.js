@@ -33,7 +33,8 @@ const DestinationScreen = () => {
   const [origin, setOrigin] = useState(initialOrigin); // Use state for origin
   const [currentProfile, setCurrentProfile] = useState('driving-traffic'); // Default profile
   const [isAlternativeEnabled, setIsAlternativeEnabled] = useState(true); // Manage alternative routes toggle
-
+  const [isTrafficJamEnabled, setisTrafficJamEnabled] = useState(true); // Congestion toggle state
+ 
   const mapViewRef = useRef(null);
   const cameraRef = useRef(null);
   const bottomSheetRef = useRef(null);
@@ -155,6 +156,11 @@ useEffect(() => {
 
   };   
   
+// Handler function for toggling traffic jam
+const handleToggleTrafficJam = (isEnabled) => {
+  setisTrafficJamEnabled(isEnabled); // Update state
+};
+
   useEffect(() => {
     fetchRoutes(); // Fetch the updated routes
   handleViewRoutes();
@@ -167,120 +173,137 @@ useEffect(() => {
     }
   }, [currentLocation, initialOrigin]);
 
- const fetchRoutes = async () => {
-  if (!initialOrigin || !destination) return;  // Use initialOrigin, not currentLocation
-
-  setLoadingRoutes(true);  // Set loading state while fetching
-
-  try {
-    const alternativesParam = isAlternativeEnabled ? 'true' : 'false'; // Conditionally set alternatives
-
-    const response = await fetch(
-      `https://api.mapbox.com/directions/v5/mapbox/${currentProfile}/${initialOrigin.longitude},${initialOrigin.latitude};${destination.longitude},${destination.latitude}?alternatives=${alternativesParam}&annotations=closure%2Cmaxspeed%2Ccongestion_numeric%2Ccongestion%2Cspeed%2Cdistance%2Cduration&exclude=ferry%2Cunpaved&geometries=geojson&language=en&overview=full&roundabout_exits=true&steps=true&access_token=${MAPBOX_API_TOKEN}`  );
-
-    const data = await response.json();
-
- 
-    if (data.routes && data.routes.length > 0) {
-      const routeData = data.routes.map((route, index) => {
-        const distance = route.distance;
-        const duration = route.duration;
-        const legs = route.legs;
-
-        const steps = [];
-
-        // Collect all coordinates for the base route
-        const allCoordinates = [];
-
-        legs.forEach((leg) => {
-          if (!leg.annotation || !leg.annotation.congestion_numeric || !leg.steps) {
-            console.warn('Missing annotation or steps in leg:', leg);
-            return;  // Skip this leg
-          }
-
-          const congestionNumericLevels = leg.annotation.congestion_numeric;
-
-          leg.steps.forEach((step) => {
-            if (!step.geometry || !step.geometry.coordinates) {
-              console.warn('Missing geometry in step:', step);
-              return;  // Skip this step
+  const fetchRoutes = async () => {
+    if (!initialOrigin || !destination) return;  // Ensure we have valid origin and destination
+  
+    setLoadingRoutes(true);  // Indicate loading
+  
+    try {
+      const alternativesParam = isAlternativeEnabled ? 'true' : 'false';  // Check if alternative routes are enabled
+      const trafficJamParam = isTrafficJamEnabled ? 'congestion_numeric%2Ccongestion%2C' : '';  // Conditionally include congestion annotations
+  
+      // Mapbox Directions API request
+      const response = await fetch(
+        `https://api.mapbox.com/directions/v5/mapbox/${currentProfile}/${initialOrigin.longitude},${initialOrigin.latitude};${destination.longitude},${destination.latitude}?alternatives=${alternativesParam}&annotations=${trafficJamParam}closure%2Cmaxspeed%2Cdistance%2Cduration&exclude=ferry%2Cunpaved&geometries=geojson&language=en&overview=full&roundabout_exits=true&steps=true&access_token=${MAPBOX_API_TOKEN}`
+      );
+  
+      const data = await response.json();
+  
+      if (data.routes && data.routes.length > 0) {
+        const routeData = data.routes.map((route, index) => {
+          const distance = route.distance;
+          const duration = route.duration;
+          const legs = route.legs;
+          const steps = [];
+          const allCoordinates = [];
+          const closures = legs[0].annotation.closure || [];  // Extract closures
+  
+          // Collect all coordinates and check for road closures
+          let hasClosures = false;  // Flag to track road closures
+  
+          legs.forEach((leg) => {
+            if (!leg.annotation || (!leg.annotation.congestion_numeric && isTrafficJamEnabled) || !leg.steps) {
+              console.warn('Missing annotation or steps in leg:', leg);
+              return;
             }
-
-            const stepCoordinates = step.geometry.coordinates;
-            allCoordinates.push(...stepCoordinates);
-
-            // Iterate over the segments in this step
-            for (let i = 0; i < stepCoordinates.length - 1; i++) {
-              const segmentCoordinates = [stepCoordinates[i], stepCoordinates[i + 1]];
-              const congestionNumericLevel = congestionNumericLevels.shift();  // Remove the first element
-
-              const color = getCongestionColor(congestionNumericLevel);
-
-              if (color) {
-                steps.push({
-                  type: 'Feature',
-                  geometry: {
-                    type: 'LineString',
-                    coordinates: segmentCoordinates,
-                  },
-                  properties: {
-                    color: color,
-                  },
-                });
+  
+            const congestionNumericLevels = leg.annotation.congestion_numeric;
+  
+            leg.steps.forEach((step) => {
+              if (!step.geometry || !step.geometry.coordinates) {
+                console.warn('Missing geometry in step:', step);
+                return;
               }
-            }
+  
+              const stepCoordinates = step.geometry.coordinates;
+              allCoordinates.push(...stepCoordinates);
+  
+              // Check for road closures and update flag
+              if (closures.includes(step.maneuver.location)) {
+                hasClosures = true;  // Road closure detected
+                console.warn('Road closure detected at:', step.maneuver.location);
+              }
+  
+              // Process congestion data if traffic jams are enabled
+              if (isTrafficJamEnabled) {
+                for (let i = 0; i < stepCoordinates.length - 1; i++) {
+                  const segmentCoordinates = [stepCoordinates[i], stepCoordinates[i + 1]];
+                  const congestionNumericLevel = congestionNumericLevels.shift();  // Extract first element
+  
+                  const color = getCongestionColor(congestionNumericLevel);
+  
+                  if (color) {
+                    steps.push({
+                      type: 'Feature',
+                      geometry: {
+                        type: 'LineString',
+                        coordinates: segmentCoordinates,
+                      },
+                      properties: {
+                        color: color,
+                      },
+                    });
+                  }
+                }
+              }
+            });
           });
+  
+          // Notify user if closures are found
+          if (hasClosures) {
+            Alert.alert('Road Closure Alert', 'There are road closures on your route.');
+          }
+  
+          // Create the base route feature as a single LineString
+          const baseRouteFeature = {
+            type: 'Feature',
+            geometry: {
+              type: 'LineString',
+              coordinates: allCoordinates,
+            },
+            properties: {
+              color: 'base',  // Base route identifier
+            },
+          };
+  
+          // Combine base route and congestion (if enabled) features
+          const featureCollection = {
+            type: 'FeatureCollection',
+            features: [baseRouteFeature, ...steps],
+          };
+  
+          return {
+            featureCollection,
+            distance,
+            duration,
+            coordinates: allCoordinates,  // Store route coordinates
+            steps: legs[0].steps,  // Include steps for turn-by-turn navigation
+            index,  // Index of the route
+            closures,  // Include closures data
+          };
         });
-
-        // Create the base route feature as a single LineString
-        const baseRouteFeature = {
-          type: 'Feature',
-          geometry: {
-            type: 'LineString',
-            coordinates: allCoordinates,
-          },
-          properties: {
-            color: 'base',  // Base route identifier
-          },
-        };
-
-        // Combine the base route and congestion features
-        const featureCollection = {
-          type: 'FeatureCollection',
-          features: [baseRouteFeature, ...steps],
-        };
-
-        return {
-          featureCollection,
-          distance,
-          duration,
-          coordinates: allCoordinates,  // Store the base route coordinates for preview
-          steps: legs[0].steps,  // Add steps for turn-by-turn navigation
-          index,  // Now index is defined
-        };
-      });
-
-      // Determine the best route (e.g., the one with the shortest duration)
-      const bestRouteIndex = routeData.reduce((bestIndex, route, index, array) => {
-        return route.duration < array[bestIndex].duration ? index : bestIndex;
-      }, 0);
-
-      setRoutes(routeData);  // Set the fetched routes
-      setSelectedRouteIndex(bestRouteIndex);  // Set the best route as selected
-      calculateFuelConsumption(routeData[bestRouteIndex]);
-      calculateDistance(routeData[bestRouteIndex]);
-
-     
-    } else {
-      console.error('No routes found.');
+  
+        // Determine the best route (e.g., shortest duration)
+        const bestRouteIndex = routeData.reduce((bestIndex, route, index, array) => {
+          return route.duration < array[bestIndex].duration ? index : bestIndex;
+        }, 0);
+  
+        setRoutes(routeData);  // Set routes
+        setSelectedRouteIndex(bestRouteIndex);  // Select the best route
+        calculateFuelConsumption(routeData[bestRouteIndex]);
+        calculateDistance(routeData[bestRouteIndex]);
+  
+      } else {
+        console.error('No routes found.');
+      }
+    } catch (error) {
+      console.error('Error fetching routes:', error);
+    } finally {
+      setLoadingRoutes(false);  // Stop loading
     }
-  } catch (error) {
-    console.error('Error fetching routes:', error);
-  } finally {
-    setLoadingRoutes(false);  // Stop loading
-  }
-};
-
+  };
+  
+  
 
   const calculateFuelConsumption = (route) => {
     if (route && gasConsumption) {
@@ -442,31 +465,33 @@ useEffect(() => {
         id={`route-source-${index}`}
         shape={route.featureCollection}
       >
-         {/* Base route line */}
-      <MapboxGL.LineLayer
-        id={`base-route-line-${index}`}
-        style={{
-          lineWidth: 6,
-          lineColor: index === selectedRouteIndex ? getRouteColor() : 'green', // Selected profile color or green for unselected
-          lineOpacity: 1, // Full opacity for all routes, change only color
-          lineCap: 'round',
-          lineJoin: 'round',
-        }}
-        filter={['==', ['get', 'color'], 'base']} // Filter to render only the base route
-      />
-
-      {/* Congestion overlays */}
-      <MapboxGL.LineLayer
-        id={`congestion-route-line-${index}`}
-        style={{
-          lineWidth: 6,
-          lineColor: ['get', 'color'], // Use the color from the route's congestion data
-          lineOpacity: 1, // Full opacity for all routes
-          lineCap: 'round',
-          lineJoin: 'round',
-        }}
-        filter={['all', ['!=', ['get', 'color'], 'base'], ['has', 'color']]} // Filter to render congestion overlays
-      />
+        {/* Base route line */}
+        <MapboxGL.LineLayer
+          id={`base-route-line-${index}`}
+          style={{
+            lineWidth: 6,
+            lineColor: index === selectedRouteIndex ? getRouteColor() : 'green', // Selected profile color or green for unselected
+            lineOpacity: 1, // Full opacity for all routes, change only color
+            lineCap: 'round',
+            lineJoin: 'round',
+          }}
+          filter={['==', ['get', 'color'], 'base']} // Filter to render only the base route
+        />
+  
+        {/* Conditionally render Congestion overlays based on isTrafficJamEnabled */}
+        {isTrafficJamEnabled && (
+  <MapboxGL.LineLayer
+    id={`congestion-route-line-${index}`}
+    style={{
+      lineWidth: 6,
+      lineColor: ['get', 'color'], // Use the color from the route's congestion data
+      lineOpacity: 1, // Full opacity for all routes
+      lineCap: 'round',
+      lineJoin: 'round',
+    }}
+    filter={['all', ['!=', ['get', 'color'], 'base'], ['has', 'color']]} // Filter to render congestion overlays
+  />
+)}
       </MapboxGL.ShapeSource>
     ));
   };
@@ -538,7 +563,11 @@ useEffect(() => {
             </TouchableOpacity>
           </View>
         </BottomSheet>
-        <SideBar onProfileChange={handleProfileChange} onToggleAlternative={handleToggleAlternative} /> 
+        <SideBar 
+        onProfileChange={handleProfileChange} 
+        onToggleAlternative={handleToggleAlternative} 
+        onToggleTrafficJam={handleToggleTrafficJam}
+        /> 
         {/* Routes Bottom Sheet */}
         {isRoutesSheetVisible && (
          <BottomSheet ref={bottomSheetRef} index={0} snapPoints={['38%', '50%', '75%']}>

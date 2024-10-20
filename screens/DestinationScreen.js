@@ -9,6 +9,7 @@ import { GasConsumptionContext } from './context/GasConsumptionProvider';
 import { MapStyleContext } from './context/MapStyleContext';
 import { MAPBOX_API_TOKEN } from '@env';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import SideBar from './SideBar';
 
 MapboxGL.setAccessToken(MAPBOX_API_TOKEN);
 
@@ -30,6 +31,8 @@ const DestinationScreen = () => {
   const [currentLocation, setCurrentLocation] = useState(null);
   const [isOriginAway, setIsOriginAway] = useState(false);
   const [origin, setOrigin] = useState(initialOrigin); // Use state for origin
+  const [currentProfile, setCurrentProfile] = useState('driving-traffic'); // Default profile
+  const [isAlternativeEnabled, setIsAlternativeEnabled] = useState(true); // Manage alternative routes toggle
 
   const mapViewRef = useRef(null);
   const cameraRef = useRef(null);
@@ -137,6 +140,26 @@ useEffect(() => {
     };
   }, [initialOrigin]);
   
+  // Profile change handler from the SideBar
+  const handleProfileChange = (newProfile) => {
+    console.log('Profile changed to:', newProfile);
+    setCurrentProfile(newProfile); // Update the state with the new profile
+    fetchRoutes(); // Re-fetch routes based on the new profile
+  console.log(newProfile);
+  };
+ 
+  
+  const handleToggleAlternative = (isEnabled) => {
+    console.log('Alternative routes:', isEnabled ? 'Enabled' : 'Disabled');
+    setIsAlternativeEnabled(isEnabled); // Update the state when the toggle changes
+
+  };   
+  
+  useEffect(() => {
+    fetchRoutes(); // Fetch the updated routes
+  handleViewRoutes();
+  }, [isAlternativeEnabled]);  // Re-fetch when `isAlternativeEnabled` changes
+  
   // Update origin based on user location if far from the set origin
   useEffect(() => {
     if (currentLocation && initialOrigin) {
@@ -150,14 +173,14 @@ useEffect(() => {
   setLoadingRoutes(true);  // Set loading state while fetching
 
   try {
+    const alternativesParam = isAlternativeEnabled ? 'true' : 'false'; // Conditionally set alternatives
+
     const response = await fetch(
-      `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${initialOrigin.longitude},${initialOrigin.latitude};${destination.longitude},${destination.latitude}?alternatives=true&annotations=closure%2Cmaxspeed%2Ccongestion_numeric%2Ccongestion%2Cspeed%2Cdistance%2Cduration&exclude=ferry%2Cunpaved&geometries=geojson&language=en&overview=full&roundabout_exits=true&steps=true&access_token=${MAPBOX_API_TOKEN}`
-    );
+      `https://api.mapbox.com/directions/v5/mapbox/${currentProfile}/${initialOrigin.longitude},${initialOrigin.latitude};${destination.longitude},${destination.latitude}?alternatives=${alternativesParam}&annotations=closure%2Cmaxspeed%2Ccongestion_numeric%2Ccongestion%2Cspeed%2Cdistance%2Cduration&exclude=ferry%2Cunpaved&geometries=geojson&language=en&overview=full&roundabout_exits=true&steps=true&access_token=${MAPBOX_API_TOKEN}`  );
 
     const data = await response.json();
 
-    console.log('Fetched data:', data);  // Log fetched data
-
+ 
     if (data.routes && data.routes.length > 0) {
       const routeData = data.routes.map((route, index) => {
         const distance = route.distance;
@@ -247,9 +270,7 @@ useEffect(() => {
       calculateFuelConsumption(routeData[bestRouteIndex]);
       calculateDistance(routeData[bestRouteIndex]);
 
-      // Additional data for preview mode:
-      console.log('Best Route:', routeData[bestRouteIndex]);
-
+     
     } else {
       console.error('No routes found.');
     }
@@ -369,7 +390,6 @@ useEffect(() => {
     // If within 50 meters of the selected origin, start navigation
     if (distanceToOrigin <= 50) {
       console.log('Navigating to NavigationScreen...');
-  
       navigation.navigate('NavigationScreen', {
         origin: originForNavigation, // Use the current location or fallback origin
         destination: destination, // Pass the destination
@@ -378,7 +398,6 @@ useEffect(() => {
     } else {
       // If far from the selected origin, go to the Preview screen
       console.log('Navigating to PreviewMapScreen...');
-  
       navigation.navigate('PreviewMapScreen', {
         origin: initialOrigin, // Use the selected origin from the search bar
         destination: destination, // Pass the destination location
@@ -402,40 +421,56 @@ useEffect(() => {
     if (routes.length === 0) {
       return null;
     }
-
+  
+    // Define a function to get the route color based on the vehicle profile
+    const getRouteColor = () => {
+      switch (currentProfile) {
+        case 'driving-traffic':
+          return 'blue'; // Car routes  
+        case 'cycling':
+          return '#e87407'; // Rickshaw routes  
+        case 'driving':
+          return '#2196F3'; // Motorcycle routes  
+        default:
+          return 'gray'; // Default route color if no profile matches
+      }
+    };
+  
     return routes.map((route, index) => (
       <MapboxGL.ShapeSource
         key={`route-source-${index}`}
         id={`route-source-${index}`}
         shape={route.featureCollection}
       >
-        {/* Base route line */}
-        <MapboxGL.LineLayer
-          id={`base-route-line-${index}`}
-          style={{
-            lineWidth: 6,
-            lineColor: 'blue', // Base route color
-            lineOpacity: index === selectedRouteIndex ? 1 : 0.2,
-            lineCap: 'round',
-            lineJoin: 'round',
-          }}
-          filter={['==', ['get', 'color'], 'base']} // Filter to render only the base route
-        />
-        {/* Congestion overlays */}
-        <MapboxGL.LineLayer
-          id={`congestion-route-line-${index}`}
-          style={{
-            lineWidth: 6,
-            lineColor: ['get', 'color'], // Use the color property ('orange' or 'red')
-            lineOpacity: index === selectedRouteIndex ? 1 : 0.2,
-            lineCap: 'round',
-            lineJoin: 'round',
-          }}
-          filter={['all', ['!=', ['get', 'color'], 'base'], ['has', 'color']]} // Filter to render congestion overlays
-        />
+         {/* Base route line */}
+      <MapboxGL.LineLayer
+        id={`base-route-line-${index}`}
+        style={{
+          lineWidth: 6,
+          lineColor: index === selectedRouteIndex ? getRouteColor() : 'green', // Selected profile color or green for unselected
+          lineOpacity: 1, // Full opacity for all routes, change only color
+          lineCap: 'round',
+          lineJoin: 'round',
+        }}
+        filter={['==', ['get', 'color'], 'base']} // Filter to render only the base route
+      />
+
+      {/* Congestion overlays */}
+      <MapboxGL.LineLayer
+        id={`congestion-route-line-${index}`}
+        style={{
+          lineWidth: 6,
+          lineColor: ['get', 'color'], // Use the color from the route's congestion data
+          lineOpacity: 1, // Full opacity for all routes
+          lineCap: 'round',
+          lineJoin: 'round',
+        }}
+        filter={['all', ['!=', ['get', 'color'], 'base'], ['has', 'color']]} // Filter to render congestion overlays
+      />
       </MapboxGL.ShapeSource>
     ));
   };
+  
 
   const getCongestionColor = (congestionValue) => {
     if (congestionValue === null || congestionValue === undefined) {
@@ -460,6 +495,7 @@ useEffect(() => {
           styleURL={mapStyle}
           onDidFinishLoadingMap={() => setMapLoaded(true)}
         >
+      
           <MapboxGL.Camera ref={cameraRef} />
           <MapboxGL.PointAnnotation
   id="origin"
@@ -473,17 +509,14 @@ useEffect(() => {
           {renderRoutes()}
         </MapboxGL.MapView>
 
-        <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={32} color="white" />
-        </TouchableOpacity>
-
+     
         {loadingRoutes && (
           <View style={styles.loadingOverlay}>
             <ActivityIndicator size="large" color="#fff" />
             <Text style={styles.loadingText}>Loading Routes...</Text>
           </View>
         )}
-
+ 
         <BottomSheet ref={bottomSheetRef} index={0} snapPoints={snapPoints}>
           <View style={styles.sheetContent}>
             <Text style={styles.sheetTitle}>
@@ -505,7 +538,7 @@ useEffect(() => {
             </TouchableOpacity>
           </View>
         </BottomSheet>
-
+        <SideBar onProfileChange={handleProfileChange} onToggleAlternative={handleToggleAlternative} /> 
         {/* Routes Bottom Sheet */}
         {isRoutesSheetVisible && (
          <BottomSheet ref={bottomSheetRef} index={0} snapPoints={['38%', '50%', '75%']}>
@@ -564,8 +597,8 @@ useEffect(() => {
 
 {isRoutesSheetVisible && ( 
  <View style={styles.fixedFooter}>
-      <TouchableOpacity style={styles.leaveLaterButton}>
-        <Text style={styles.leaveLaterButtonText}>Leave later</Text>
+      <TouchableOpacity style={styles.leaveLaterButton} onPress={handleBack}>
+        <Text style={styles.leaveLaterButtonText}>Go Back</Text>
       </TouchableOpacity>
       <TouchableOpacity
   style={styles.goNowButton}

@@ -53,11 +53,12 @@ const formatDuration = (durationInSeconds) => {
 /** Styles */
 const styles = StyleSheet.create({
   container: {
-  
+   marginTop:-15,
     backgroundColor: '#fff',
     borderRadius: 8,
     marginVertical: 8,
-    color:'black'
+    color:'black',
+    alignItems:'center'
   },
   summaryTitle: {
     fontSize: 20,

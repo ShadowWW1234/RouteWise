@@ -17,7 +17,7 @@ import * as turf from '@turf/turf';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { MapStyleContext } from './context/MapStyleContext';
 import axios from 'axios';
-import BottomSheet from '@gorhom/bottom-sheet';
+import BottomSheet, { BottomSheetBackdrop } from '@gorhom/bottom-sheet';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import RouteInfoCard from './RouteInfoCard';
 import { MAPBOX_API_TOKEN } from '@env';
@@ -27,6 +27,7 @@ import { debounce,throttle  } from 'lodash';
 import Summary from './Summary';
 import tw from 'tailwind-react-native-classnames';
 import SideBar from './SideBar';
+import InstructionsList from './component/InstructionList';
 
 MapboxGL.setAccessToken(MAPBOX_API_TOKEN);
 
@@ -88,7 +89,7 @@ const loadRouteFromStorage = async (setFullRoute, setInstructions, setEta, setCu
   }
 };
 
-const NavigationScreen = ({ route, navigation }) => {
+const NavigationScreen = ({ route, navigation  }) => {
   const mapRef = useRef(null); // Properly initialize mapRef
 
   const {
@@ -121,7 +122,7 @@ const NavigationScreen = ({ route, navigation }) => {
   const [fullRoute, setFullRoute] = useState([]); // Store the full route coordinates
   const [isRecalculating, setIsRecalculating] = useState(false); // Prevent multiple recalculations
   const [lastRecalculationTime, setLastRecalculationTime] = useState(0); // Debounce recalculations
-  const snapPoints = useMemo(() => ['13%', '50%'], []);
+  const snapPoints = useMemo(() => ['15%', '60%'], []);
   const bottomSheetRef = useRef(null);
 
   const [totalDistance, setTotalDistance] = useState(0); // in meters
@@ -162,7 +163,21 @@ const NavigationScreen = ({ route, navigation }) => {
     return null;  // No congestion
   };
   
- 
+  const handleRoutePress = () => {
+    console.log('Route button pressed');
+    // Implement the logic for showing route details or options
+  };
+  
+  const handleShareDrivePress = () => {
+    console.log('Share Drive button pressed');
+    // Implement the logic for sharing the drive, e.g., through a share sheet
+  };
+  
+  const handleOverviewPress = () => {
+    console.log('Overview button pressed');
+    // Implement the logic for showing an overview of the route
+  };
+  
   // Function to check if the user is off-route
   const checkIfOffRoute = (currentPosition, route) => {
     if (!currentPosition || !Array.isArray(route) || route.length === 0) return false;
@@ -173,8 +188,7 @@ const NavigationScreen = ({ route, navigation }) => {
     const snapped = turf.nearestPointOnLine(routeLine, userPoint, { units: 'meters' });
     const distanceFromRoute = turf.distance(userPoint, snapped, { units: 'meters' });
 
-    console.log(`Distance from route: ${distanceFromRoute.toFixed(2)} meters`);
-
+  
     return distanceFromRoute > 30; // Returns true if off-route
   };
  
@@ -182,7 +196,7 @@ const NavigationScreen = ({ route, navigation }) => {
   useEffect(() => {
     if (remainingDuration > 0) {
       const newEta = calculateETA(remainingDuration);
-      console.log('New ETA:', newEta);
+     
       setEta(newEta);
     } else {
   //    console.warn('Remaining duration is 0 or invalid.');
@@ -201,7 +215,6 @@ const NavigationScreen = ({ route, navigation }) => {
   
     // Ensure the length of congestion data matches the segments between coordinates
     if (congestionLevels.length !== coordinates.length - 1) {
-      console.warn(`Mismatch between congestion levels (${congestionLevels.length}) and coordinates (${coordinates.length})`);
       return;
     }
   
@@ -583,7 +596,7 @@ const recalculateRoute = async (currentPosition) => {
   // Function to match location to road using Mapbox Map Matching API
  const matchLocationToRoad = async (longitude, latitude) => {
   try {
-    console.log(`Attempting to match location: [${longitude}, ${latitude}]`);
+   // console.log(`Attempting to match location: [${longitude}, ${latitude}]`);
 
     // Ensure we have a previous position; if not, initialize it
     if (!previousPosition.current) {
@@ -610,7 +623,7 @@ const recalculateRoute = async (currentPosition) => {
     const matchedPoint = response.data.matchings[0]?.geometry?.coordinates[1];
 
     if (matchedPoint) {
-      console.log(`Using Snapped Position: ${matchedPoint}`);
+   //   console.log(`Using Snapped Position: ${matchedPoint}`);
       previousPosition.current = [longitude, latitude]; // Update previous position
       return matchedPoint;
     } else {
@@ -639,7 +652,7 @@ const recalculateRoute = async (currentPosition) => {
         const remainingDistanceInMeters = turf.length(remainingRoute, { units: 'meters' });
         if (isFinite(remainingDistanceInMeters)) {
           const fuelUsedForTrip = (remainingDistanceInMeters / 1000) / gasConsumption; // Convert to km and divide by consumption rate
-          console.log(`Fuel used for the trip: ${fuelUsedForTrip.toFixed(2)} L`);
+      //    console.log(`Fuel used for the trip: ${fuelUsedForTrip.toFixed(2)} L`);
           setFuelUsed(parseFloat(fuelUsedForTrip.toFixed(2)));
         } else {
          // console.warn('Invalid remaining distance calculated.');
@@ -654,26 +667,26 @@ const recalculateRoute = async (currentPosition) => {
 useEffect(() => {
   if (isDestinationReached) {
     setIsFinishRouteSheetVisible(true); // Show the "Finish Route" bottom sheet when reached
-    console.log("Opening destination reached bottom sheet.");
+   // console.log("Opening destination reached bottom sheet.");
   } else {
     setIsFinishRouteSheetVisible(false); // Hide the sheet if destination is not reached
-    console.log("Closing destination reached bottom sheet.");
+  //  console.log("Closing destination reached bottom sheet.");
   }
 }, [isDestinationReached]);
 
 // Check if destination is reached based on remaining distance
 useEffect(() => {
   if (remainingDistance > 0) {
-    console.log(`Checking remaining distance: ${remainingDistance} meters`);
+  //  console.log(`Checking remaining distance: ${remainingDistance} meters`);
 
     if (remainingDistance < proximityThreshold) {
       // Mark destination as reached only when very close (use a tight threshold)
       setIsDestinationReached(true);
-      console.log(`Destination reached, within ${remainingDistance} meters`);
+    //  console.log(`Destination reached, within ${remainingDistance} meters`);
     } else {
       // Ensure destination is not marked as reached if the distance is still significant
       setIsDestinationReached(false);
-      console.log('Still en route, destination not yet reached.');
+     // console.log('Still en route, destination not yet reached.');
     }
   }
 }, [remainingDistance, proximityThreshold]);
@@ -683,7 +696,7 @@ useEffect(() => {
     try {
       return await matchLocationToRoad(longitude, latitude);
     } catch (error) {
-      console.error('Error in debounced matchLocationToRoad:', error);
+    //  console.error('Error in debounced matchLocationToRoad:', error);
       return null;
     }
   }, 3000), []); // 3-second debounce
@@ -693,7 +706,7 @@ useEffect(() => {
     const { longitude, latitude, speed } = location.coords;
     const gpsPosition = [longitude, latitude];
   
-    console.log(`Received GPS Location: ${gpsPosition}`);
+   // console.log(`Received GPS Location: ${gpsPosition}`);
   
     // Convert speed from m/s to km/h
     const speedKmPerHour = speed ? parseFloat((speed * 3.6).toFixed(1)) : 0;
@@ -731,7 +744,7 @@ useEffect(() => {
           { units: 'meters' }
         );
   
-        console.log(`Distance from Route: ${distanceFromRoute.toFixed(2)} meters`);
+   //     console.log(`Distance from Route: ${distanceFromRoute.toFixed(2)} meters`);
   
         if (distanceFromRoute > 30 && speed > 0) {
           console.log('Off-route detected. Recalculating route...');
@@ -760,25 +773,25 @@ useEffect(() => {
     
     if (!isNaN(remainingDistanceInMeters)) {
       setRemainingDistance(remainingDistanceInMeters); // Update remaining distance
-      console.log(`Remaining distance: ${remainingDistanceInMeters} meters`);
+    //  console.log(`Remaining distance: ${remainingDistanceInMeters} meters`);
     } else {
-      console.error('Invalid remaining distance calculated.');
+   //   console.error('Invalid remaining distance calculated.');
     }
 
     // Calculate total distance (from start to end of the route)
     const totalDistanceInMeters = turf.length(routeLine, { units: 'meters' });
-    console.log(`Total route distance: ${totalDistanceInMeters} meters`);
+  //  console.log(`Total route distance: ${totalDistanceInMeters} meters`);
 
     // Calculate traversed distance
     const traversedDistanceInMeters = totalDistanceInMeters - remainingDistanceInMeters;
     setRouteProgress(traversedDistanceInMeters / totalDistanceInMeters); // Update route progress
-    console.log(`Traversed distance: ${traversedDistanceInMeters} meters`);
+ //   console.log(`Traversed distance: ${traversedDistanceInMeters} meters`);
 
     // Calculate remaining duration based on user's actual speed
     if (speed > 5) { // Use a threshold to avoid unrealistic durations
       const remainingDurationInSeconds = (remainingDistanceInMeters / 1000) / speed * 3600; // Convert to seconds
       setRemainingDuration(remainingDurationInSeconds);
-      console.log(`Remaining duration: ${remainingDurationInSeconds} seconds`);
+   //   console.log(`Remaining duration: ${remainingDurationInSeconds} seconds`);
     } else {
       // Fallback to route's estimated duration if speed is too low
       const remainingDurations = instructions.slice(currentStepIndex).reduce(
@@ -786,23 +799,23 @@ useEffect(() => {
         0
       );
       setRemainingDuration(remainingDurations);
-      console.log(`Fallback remaining duration: ${remainingDurations} seconds`);
+   //   console.log(`Fallback remaining duration: ${remainingDurations} seconds`);
     }
 
     // Update ETA based on the new remaining duration
     if (remainingDuration > 0) {
       const newEta = calculateETA(remainingDuration);
       setEta(newEta);
-      console.log(`Estimated Time of Arrival: ${newEta}`);
+    //  console.log(`Estimated Time of Arrival: ${newEta}`);
     }
 
     // Check if destination is reached based on remaining distance
     if (remainingDistanceInMeters < proximityThreshold) {
       setIsDestinationReached(true);
-      console.log(`Destination reached, within ${remainingDistanceInMeters} meters`);
+    //  console.log(`Destination reached, within ${remainingDistanceInMeters} meters`);
     } else {
       setIsDestinationReached(false);
-      console.log('Still en route, destination not yet reached.');
+   //   console.log('Still en route, destination not yet reached.');
     }
   }
 }, [currentPosition, speed, instructions, currentStepIndex, remainingDuration, proximityThreshold, fullRoute]);
@@ -828,6 +841,11 @@ const recenterMap = () => {
 };
   // Function to handle exiting navigation
   const handleExitNavigation = () => {
+
+// Show the "Finish Route" bottom sheet when the user tries to quit
+setIsFinishRouteSheetVisible(true); 
+
+
     setInstructions([]);
     setTraversedRoute([]);
     setNonTraversedRoute([]);
@@ -967,7 +985,7 @@ const recenterMap = () => {
       const { longitude, latitude, speed } = location.coords;
       const gpsPosition = [longitude, latitude];
 
-      console.log(`Received GPS Location: ${gpsPosition}`);
+    //  console.log(`Received GPS Location: ${gpsPosition}`);
 
       // Convert speed from m/s to km/h
       const speedKmPerHour = speed ? parseFloat((speed * 3.6).toFixed(1)) : 0;
@@ -1003,7 +1021,7 @@ const recenterMap = () => {
           { units: 'meters' }
         );
 
-        console.log(`Distance from Route: ${distanceFromRoute.toFixed(2)} meters`);
+      //  console.log(`Distance from Route: ${distanceFromRoute.toFixed(2)} meters`);
 
         if (distanceFromRoute > 30 && speed > 0) {
           console.log('Off-route detected. Recalculating route...');
@@ -1132,71 +1150,74 @@ const recenterMap = () => {
           />
         </TouchableOpacity>
         <Animated.View style={[styles.turnList, { height: dropdownHeight }]}>
-          <FlatList
-            data={remainingInstructions}
-            keyExtractor={(item, index) => `instruction_${currentStepIndex + index}`}
-            renderItem={({ item }) => (
-              <View style={styles.turnCard}>
-                <Ionicons
-                  name={getManeuverIcon(item.maneuver.instruction)}
-                  size={30}
-                  color="black"
-                />
-                <View style={styles.turnCardText}>
-                  <Text style={styles.turnCardDistance}>{`${Math.round(
-                    item.distance
-                  )} m`}</Text>
-                  <Text style={styles.turnCardRoad}>
-                    {item.name || 'Unknown Road'}
-                  </Text>
-                </View>
-              </View>
-            )}
-            contentContainerStyle={{ paddingBottom: 10 }}
-            ListEmptyComponent={() => (
-              <View style={styles.emptyList}>
-                <Text style={styles.emptyText}>No remaining instructions</Text>
-              </View>
-            )}
-          />
+        <InstructionsList
+        remainingInstructions={remainingInstructions}
+        currentStepIndex={currentStepIndex}
+      />
         </Animated.View>
 
-        {/* BottomSheet */}
         <BottomSheet
-          ref={bottomSheetRef}
-          index={0}
-          snapPoints={snapPoints}
-          enablePanDownToClose={false}
-          handleIndicatorStyle={{ backgroundColor: 'gray' }}
-        >
-          <View style={styles.bottomSheetContent}>
-        
-            {/* Shutdown Icon */}
-            <TouchableOpacity
-              style={styles.shutdownIcon}
-              onPress={() => setShowExitModal(true)} // Trigger exit modal
-            >
-              <Ionicons name="power" size={30} color="red" />
-            </TouchableOpacity>
+  ref={bottomSheetRef}
+  index={0}
+  snapPoints={snapPoints}
+  enablePanDownToClose={false}
+  handleIndicatorStyle={{ backgroundColor: 'gray' }}
+>
+  <View style={styles.bottomSheetContent}>
+  
+    {/* Row for Settings Icon, Summary, and Power Icon */}
+    <View style={styles.topBar}>
+      {/* Settings Icon (Left-Aligned) */}
+      <TouchableOpacity
+        style={styles.settingsIcon}
+        onPress={() => navigation.navigate('SettingsScreen')}  
+      >
+        <Ionicons name="settings-outline" size={30} color="gray" />
+      </TouchableOpacity>
 
-            {/* Summary Component */}
-            <Summary
-              eta={eta}
-              estimatedFuelConsumption={fuelUsed}
-              remainingDistance={remainingDistance}
-              remainingDuration={remainingDuration}
-            />
+      {/* Summary Component (Centered) */}
+      <View style={styles.summaryContainer}>
+        <Summary
+          eta={eta}
+          estimatedFuelConsumption={fuelUsed}
+          remainingDistance={remainingDistance}
+          remainingDuration={remainingDuration}
+        />
+      </View>
 
-            {/* RouteInfoCard Component */}
-            <RouteInfoCard
-              destinationName={destinationName}
-              viaRoad={currentRoadName}
-              congestionSegments={congestionSegments}
-              onAddStop={handleAddStop}
-              progress={routeProgress}
-            />
-          </View>
-        </BottomSheet>
+      {/* Shutdown Icon (Right-Aligned) */}
+      <TouchableOpacity
+        style={styles.shutdownIcon}
+        onPress={() => setIsFinishRouteSheetVisible(true)}  
+      >
+        <Ionicons name="power" size={30} color="red" />
+      </TouchableOpacity>
+    </View>
+
+    {/* RouteInfoCard Component */}
+    <RouteInfoCard
+      destinationName={destinationName}
+      viaRoad={currentRoadName}
+      congestionSegments={congestionSegments}
+      onAddStop={handleAddStop}
+      progress={routeProgress}
+    />
+
+    {/* Footer Container with 3 buttons */}
+    <View style={styles.footer}>
+      <TouchableOpacity style={styles.routeButton} onPress={handleRoutePress}>
+        <Text style={styles.buttonText}>Route</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.shareDriveButton} onPress={handleShareDrivePress}>
+        <Text style={styles.buttonText}>Share Drive</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.overviewButton} onPress={handleOverviewPress}>
+        <Text style={styles.buttonText}>Overview</Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+</BottomSheet>
+
 {/* Finish Route BottomSheet */}
 <BottomSheet
     ref={bottomSheetRef}
@@ -1263,7 +1284,6 @@ const recenterMap = () => {
   );
 };
 
-// Styles for the component
 const styles = StyleSheet.create({
   container: { flex: 1 },
   map: { flex: 1 },
@@ -1373,9 +1393,11 @@ const styles = StyleSheet.create({
     color: 'black',
   },
   bottomSheetContent: {
-    flex: 1,
-    alignItems: 'center',
-    marginTop: -5,
+    flexGrow: 1, // Allow content to grow without stretching, instead of flex: 1
+    justifyContent: 'space-between', // Space between top content and footer
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 20, // Ensure padding at the bottom
   },
   shutdownIcon: {
     position: 'absolute',
@@ -1383,14 +1405,44 @@ const styles = StyleSheet.create({
     right: 20,
     zIndex: 1,
   },
-  emptyList: {
-    padding: 20,
-    alignItems: 'center',
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 20,
+    paddingVertical: 15, // Add more padding for better touch targets
+    width: '100%', // Ensure footer buttons take full width
+    borderTopWidth: 1,
+    borderTopColor: '#ccc', // Optional: Add a border to separate footer from content
   },
-  emptyText: {
-    color: 'gray',
+  routeButton: {
+    flex: 1,
+    backgroundColor: '#4CAF50',
+    paddingVertical: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginRight: 5,
+  },
+  shareDriveButton: {
+    flex: 1,
+    backgroundColor: '#2196F3',
+    paddingVertical: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginHorizontal: 5,
+  },
+  overviewButton: {
+    flex: 1,
+    backgroundColor: '#FF9800',
+    paddingVertical: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginLeft: 5,
+  },
+  buttonText: {
+    color: 'white',
+    fontWeight: 'bold',
     fontSize: 16,
-  },  finishRouteContainer: {
+  }, finishRouteContainer: {
     flex: 1,
     padding: 20,
     alignItems: 'center',
@@ -1450,7 +1502,28 @@ buttonText: {
     color: 'white',
     fontSize: 16,
     fontWeight: 'bold',
+}, topBar: {
+  flexDirection: 'row', // Align items in a row
+  justifyContent: 'space-between', // Space items across the row
+  alignItems: 'center', // Vertically center all items
+  width: '100%', // Ensure it takes full width
+  marginBottom: 15, // Add some spacing below
+},
+settingsIcon: {
+  flex: 1, // Take up equal space on the left
+  alignItems: 'flex-start', // Align icon to the left
+},
+summaryContainer: {
+  flex: 4, // Make the summary take more space
+  justifyContent: 'center', // Center the summary horizontally
+  alignItems: 'center', // Center summary text vertically
+ 
+},
+shutdownIcon: {
+  flex: 1, // Take up equal space on the right
+  alignItems: 'flex-end', // Align icon to the right
 },
 });
+
 
 export default NavigationScreen;

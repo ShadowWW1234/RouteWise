@@ -14,7 +14,16 @@ import StopSearchScreen from './screens/modals/StopSearchScreen';
 import PreviewMapScreen from './screens/PreviewMapScreen'
 import { GasConsumptionProvider  } from './screens/context/GasConsumptionProvider';
 import DestinationScreen from './screens/DestinationScreen';
-
+import firebase from '@react-native-firebase/app';
+import firestore from '@react-native-firebase/firestore';
+import {
+  FIREBASE_API_KEY,
+  FIREBASE_AUTH_DOMAIN,
+  FIREBASE_PROJECT_ID,
+  FIREBASE_STORAGE_BUCKET,
+  FIREBASE_MESSAGING_SENDER_ID,
+  FIREBASE_APP_ID
+} from '@env';
 // Create Stack Navigator
 const Stack = createNativeStackNavigator();
 
@@ -26,6 +35,18 @@ const App = () => {
   const [initialState, setInitialState] = useState();  // Store the initial state
   const [appState, setAppState] = useState(AppState.currentState);
 
+
+// Firebase configuration (from your Firebase project settings)
+const firebaseConfig = {
+  apiKey: "FIREBASE_API_KEY",
+  authDomain: "FIREBASE_AUTH_DOMAIN",
+  projectId: "FIREBASE_PROJECT_ID",
+  storageBucket: "FIREBASE_STORAGE_BUCKET",
+  messagingSenderId: "FIREBASE_MESSAGING_SENDER_ID",
+  appId: "FIREBASE_APP_ID",
+};
+
+ 
   useEffect(() => {
     const clearStateOnReopen = async () => {
       await AsyncStorage.removeItem(NAVIGATION_STATE_KEY); // Clear previous navigation state
@@ -41,6 +62,14 @@ const App = () => {
       appStateSubscription.remove();
     };
   }, []);
+
+
+
+
+// Initialize Firebase
+if (!firebase.apps.length) {
+  firebase.initializeApp(firebaseConfig);
+}
 
 
    // Restore navigation state from AsyncStorage

@@ -18,7 +18,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { MapStyleContext } from './context/MapStyleContext';
 import axios from 'axios';
 import BottomSheet, { BottomSheetBackdrop } from '@gorhom/bottom-sheet';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { GestureHandlerRootView, ScrollView, Switch } from 'react-native-gesture-handler';
 import RouteInfoCard from './RouteInfoCard';
 import { MAPBOX_API_TOKEN } from '@env';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -107,7 +107,7 @@ const NavigationScreen = ({ route, navigation  }) => {
   const [isFollowing, setIsFollowing] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [showExitModal, setShowExitModal] = useState(false);
-  const { mapStyle } = useContext(MapStyleContext);
+  const { mapStyle,setMapStyle  } = useContext(MapStyleContext);
   const [instructions, setInstructions] = useState([]);
   const [currentInstruction, setCurrentInstruction] = useState('');
   const [showRecenter, setShowRecenter] = useState(false);
@@ -141,9 +141,31 @@ const NavigationScreen = ({ route, navigation  }) => {
   const [isFinishRouteSheetVisible, setIsFinishRouteSheetVisible] = useState(false); // This controls the visibility of the "Finish Route" bottom sheet
 
   const previousPosition = useRef(null); // Use ref to persist across renders
+  
+  const [isSettingsModalVisible, setIsSettingsModalVisible] = useState(false);
+  const [avoidTolls, setAvoidTolls] = useState(false);
+  const [avoidUnpaved, setAvoidUnpaved] = useState(true);
+  const [avoidFerries, setAvoidFerries] = useState(true);
 
- 
+  const [isLoadingTolls, setIsLoadingTolls] = useState(false);
+  const [isLoadingUnpaved, setIsLoadingUnpaved] = useState(false);
+  const [isLoadingFerries, setIsLoadingFerries] = useState(false);
+  const [isLoadingMapStyle, setIsLoadingMapStyle] = useState(false);
+  
   const proximityThreshold = 70;  
+
+  const toggleMapStyle = () => {
+    setIsLoadingMapStyle(true);
+    setTimeout(() => {
+      setMapStyle(prevStyle =>
+        prevStyle === 'mapbox://styles/mapbox/streets-v11'
+          ? 'mapbox://styles/mapbox/satellite-streets-v12'
+          : 'mapbox://styles/mapbox/streets-v11'
+      );
+      setIsLoadingMapStyle(false);
+    }, 1000);
+  };
+  
   // Effect to handle new stops added from StopSearchScreen
   useEffect(() => {
     if (route.params?.newStop) {
@@ -274,7 +296,6 @@ const handleFinishRoute = () => {
 };
 
 
- // Function to recalculate route when off-route
 const recalculateRoute = async (currentPosition) => {
   if (!currentPosition || !destination) {
     console.error('Invalid input: Current position or destination is missing.');
@@ -299,6 +320,14 @@ const recalculateRoute = async (currentPosition) => {
       destinationCoordinates,
     ];
 
+    // Prepare the avoid parameters based on settings
+    const avoidOptions = [];
+    if (avoidTolls) avoidOptions.push('toll');
+    if (avoidUnpaved) avoidOptions.push('unpaved');
+    if (avoidFerries) avoidOptions.push('ferry');
+
+    const avoidString = avoidOptions.join(',');
+
     const response = await axios.get(
       `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${coordinatesArray.join(';')}`,
       {
@@ -308,6 +337,7 @@ const recalculateRoute = async (currentPosition) => {
           geometries: 'geojson',
           overview: 'full',
           annotations: 'congestion_numeric',
+          ...(avoidString ? { exclude: avoidString } : {}), // Add 'exclude' parameter only if avoid options are selected
         },
       }
     );
@@ -377,88 +407,96 @@ const recalculateRoute = async (currentPosition) => {
 };
 
 
-  const fetchDirections = async () => {
-    if (!route?.params?.origin || !route?.params?.destination) {
-      console.error('Missing origin or destination.');
-      return;
+const fetchDirections = async () => {
+  if (!route?.params?.origin || !route?.params?.destination) {
+    console.error('Missing origin or destination.');
+    return;
+  }
+
+  const { origin, destination } = route.params;
+
+  try {
+    // Construct the coordinates array (including stops if available)
+    const originCoordinates = `${origin.longitude},${origin.latitude}`;
+    const destinationCoordinates = `${destination.longitude},${destination.latitude}`;
+    
+    // Create an array of stop coordinates
+    const stopCoordinates = stops.map((stop) => `${stop.longitude},${stop.latitude}`);
+
+    // Combine origin, stop(s), and destination into a single array for the request
+    const coordinatesArray = [originCoordinates, ...stopCoordinates, destinationCoordinates];
+
+    // Construct the avoid parameters dynamically based on user settings
+    let excludeParams = [];
+    if (avoidTolls) excludeParams.push('toll');
+    if (avoidUnpaved) excludeParams.push('unpaved');
+    if (avoidFerries) excludeParams.push('ferry');
+    const excludeString = excludeParams.length > 0 ? excludeParams.join(',') : null;
+
+    // Make the Mapbox Directions API request with waypoints (including stops)
+    const response = await axios.get(
+      `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${coordinatesArray.join(';')}`,
+      {
+        params: {
+          access_token: MAPBOX_API_TOKEN,
+          steps: true,
+          geometries: 'geojson',
+          overview: 'full',
+          annotations: 'congestion_numeric',
+          exclude: excludeString, // Add exclude parameter if any settings are true
+        },
+      }
+    );
+
+    const routeData = response.data.routes[0]; // Fetch the first route
+    setFullRoute(routeData.geometry.coordinates); // Set full route coordinates
+    setInstructions(routeData.legs.flatMap((leg) => leg.steps)); // Set instructions for the route
+
+    // Set the first instruction
+    if (routeData.legs.length > 0 && routeData.legs[0].steps.length > 0) {
+      setCurrentInstruction(routeData.legs[0].steps[0].maneuver.instruction);
     }
-  
-    const { origin, destination } = route.params;
-  
-    try {
-      // Construct the coordinates array (including stops if available)
-      const originCoordinates = `${origin.longitude},${origin.latitude}`;
-      const destinationCoordinates = `${destination.longitude},${destination.latitude}`;
-      
-      // Create an array of stop coordinates
-      const stopCoordinates = stops.map((stop) => `${stop.longitude},${stop.latitude}`);
-  
-      // Combine origin, stop(s), and destination into a single array for the request
-      const coordinatesArray = [originCoordinates, ...stopCoordinates, destinationCoordinates];
-  
-      // Make the Mapbox Directions API request with waypoints (including stops)
-      const response = await axios.get(
-        `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${coordinatesArray.join(';')}`,
-        {
-          params: {
-            access_token: MAPBOX_API_TOKEN,
-            steps: true,
-            geometries: 'geojson',
-            overview: 'full',
-            annotations: 'congestion_numeric',
+
+    // Handle congestion data (if available)
+    if (routeData.legs && routeData.legs[0].annotation && routeData.legs[0].annotation.congestion_numeric) {
+      const congestionLevels = routeData.legs[0].annotation.congestion_numeric;
+
+      // Map the congestion levels to the route coordinates
+      const segments = routeData.geometry.coordinates.map((coord, i) => {
+        if (i === routeData.geometry.coordinates.length - 1) return null;
+
+        const congestionValue = congestionLevels[i];
+        const [lon1, lat1] = coord;
+        const [lon2, lat2] = routeData.geometry.coordinates[i + 1];
+
+        const congestionColor = getCongestionColor(congestionValue);
+        if (!congestionColor) return null;
+
+        return {
+          type: 'Feature',
+          geometry: {
+            type: 'LineString',
+            coordinates: [
+              [lon1, lat1],
+              [lon2, lat2],
+            ],
           },
-        }
-      );
-  
-      const routeData = response.data.routes[0]; // Fetch the first route
-      setFullRoute(routeData.geometry.coordinates); // Set full route coordinates
-      setInstructions(routeData.legs.flatMap((leg) => leg.steps)); // Set instructions for the route
-  
-      // Set the first instruction
-      if (routeData.legs.length > 0 && routeData.legs[0].steps.length > 0) {
-        setCurrentInstruction(routeData.legs[0].steps[0].maneuver.instruction);
-      }
-  
-      // Handle congestion data (if available)
-      if (routeData.legs && routeData.legs[0].annotation && routeData.legs[0].annotation.congestion_numeric) {
-        const congestionLevels = routeData.legs[0].annotation.congestion_numeric;
-  
-        // Map the congestion levels to the route coordinates
-        const segments = routeData.geometry.coordinates.map((coord, i) => {
-          if (i === routeData.geometry.coordinates.length - 1) return null;
-  
-          const congestionValue = congestionLevels[i];
-          const [lon1, lat1] = coord;
-          const [lon2, lat2] = routeData.geometry.coordinates[i + 1];
-  
-          const congestionColor = getCongestionColor(congestionValue);
-          if (!congestionColor) return null;
-  
-          return {
-            type: 'Feature',
-            geometry: {
-              type: 'LineString',
-              coordinates: [
-                [lon1, lat1],
-                [lon2, lat2],
-              ],
-            },
-            properties: { color: congestionColor },
-          };
-        }).filter((segment) => segment !== null);
-  
-        setCongestionSegments(segments); // Set the congestion segments
-      } else {
-        setCongestionSegments([]); // Clear congestion segments if none are available
-      }
-  
-      // Set the full route initially as non-traversed
-      setNonTraversedRoute(routeData.geometry.coordinates);
-    } catch (error) {
-      console.error('Error fetching directions:', error);
+          properties: { color: congestionColor },
+        };
+      }).filter((segment) => segment !== null);
+
+      setCongestionSegments(segments); // Set the congestion segments
+    } else {
+      setCongestionSegments([]); // Clear congestion segments if none are available
     }
-  };
-  
+
+    // Set the full route initially as non-traversed
+    setNonTraversedRoute(routeData.geometry.coordinates);
+  } catch (error) {
+    console.error('Error fetching directions:', error);
+  }
+};
+
   
  
   useEffect(() => {
@@ -637,6 +675,40 @@ const recalculateRoute = async (currentPosition) => {
     return [longitude, latitude]; // Fallback to GPS coordinates
   }
 };
+
+const handleAvoidTollsToggle = async (value) => {
+  setIsLoadingTolls(true);  // Start loading indicator
+
+  try {
+    setAvoidTolls(value);  // Set the new value for avoiding tolls
+    await recalculateRoute(currentPosition);  // Recalculate route after setting the toggle
+  } catch (error) {
+    console.error("Error recalculating route:", error);  // Handle any errors in recalculating
+  } finally {
+    setIsLoadingTolls(false);  // Stop loading indicator after recalculation is done
+  }
+};
+
+const handleAvoidUnpavedToggle = (value) => {
+  setIsLoadingUnpaved(true);
+  setTimeout(() => {
+    setAvoidUnpaved(value);
+    setIsLoadingUnpaved(false);
+  }, 1000);
+};
+
+
+const handleAvoidFerriesToggle = (value) => {
+  setIsLoadingFerries(true);
+  setTimeout(() => {
+    setAvoidFerries(value);
+    setIsLoadingFerries(false);
+  }, 1000);
+};
+
+ 
+
+
   // Effect to calculate fuel consumption based on remaining distance
   useEffect(() => {
   //  console.log('Effect triggered with:', { currentPosition, fullRoute, gasConsumption });
@@ -1170,7 +1242,7 @@ setIsFinishRouteSheetVisible(true);
       {/* Settings Icon (Left-Aligned) */}
       <TouchableOpacity
         style={styles.settingsIcon}
-        onPress={() => navigation.navigate('SettingsScreen')}  
+        onPress={() => setIsSettingsModalVisible(true)}
       >
         <Ionicons name="settings-outline" size={30} color="gray" />
       </TouchableOpacity>
@@ -1257,6 +1329,95 @@ setIsFinishRouteSheetVisible(true);
                 <Text style={styles.buttonText}>Finish Route</Text>
             </TouchableOpacity>
         </View>
+
+
+
+         {/* Settings Modal */}
+         <Modal
+  animationType="slide"
+  transparent={true}
+  visible={isSettingsModalVisible}
+  onRequestClose={() => setIsSettingsModalVisible(false)}
+>
+  <View style={styles.modalContainer}>
+    <View style={styles.modalContent}>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <Text style={styles.modalTitle}>Settings</Text>
+
+        {/* Avoid Tolls Toggle */}
+        <TouchableOpacity style={styles.optionButton}>
+          <View style={styles.optionTextContainer}>
+            <Ionicons name="car-outline" size={24} color="#2196F3" style={styles.optionIcon} />
+            <Text style={styles.optionText}>Avoid Tolls</Text>
+          </View>
+          <Switch
+            value={avoidTolls}
+            onValueChange={handleAvoidTollsToggle}
+            trackColor={{ false: '#ECECEC', true: '#81b0ff' }}
+            thumbColor={avoidTolls ? '#2196F3' : '#f4f3f4'}
+            style={styles.switch} // Apply the switch style here
+          />
+        </TouchableOpacity>
+
+        {/* Avoid Unpaved Roads Toggle */}
+        <TouchableOpacity style={styles.optionButton}>
+          <View style={styles.optionTextContainer}>
+            <Ionicons name="trail-sign-outline" size={24} color="#FF9800" style={styles.optionIcon} />
+            <Text style={styles.optionText}>Avoid Unpaved Roads</Text>
+          </View>
+          <Switch
+            value={avoidUnpaved}
+            onValueChange={handleAvoidUnpavedToggle}
+            trackColor={{ false: '#ECECEC', true: '#81b0ff' }}
+            thumbColor={avoidUnpaved ? '#FF9800' : '#f4f3f4'}
+            style={styles.switch}
+          />
+        </TouchableOpacity>
+
+        {/* Avoid Ferries Toggle */}
+        <TouchableOpacity style={styles.optionButton}>
+          <View style={styles.optionTextContainer}>
+            <Ionicons name="boat-outline" size={24} color="#4CAF50" style={styles.optionIcon} />
+            <Text style={styles.optionText}>Avoid Ferries</Text>
+          </View>
+          <Switch
+            value={avoidFerries}
+            onValueChange={handleAvoidFerriesToggle}
+            trackColor={{ false: '#ECECEC', true: '#81b0ff' }}
+            thumbColor={avoidFerries ? '#4CAF50' : '#f4f3f4'}
+            style={styles.switch}
+          />
+        </TouchableOpacity>
+
+        {/* Map Style Toggle */}
+        <TouchableOpacity style={styles.optionButton}>
+          <View style={styles.optionTextContainer}>
+            <Ionicons name="map-outline" size={24} color="#8E24AA" style={styles.optionIcon} />
+            <Text style={styles.optionText}>Satellite View</Text>
+          </View>
+          <Switch
+            value={mapStyle === 'mapbox://styles/mapbox/satellite-streets-v12'}
+            onValueChange={toggleMapStyle}
+            trackColor={{ false: '#ECECEC', true: '#81b0ff' }}
+            thumbColor={mapStyle === 'mapbox://styles/mapbox/satellite-streets-v12' ? '#8E24AA' : '#f4f3f4'}
+            style={styles.switch}
+          />
+        </TouchableOpacity>
+
+        {/* Close Button */}
+        <TouchableOpacity
+          style={styles.closeButton}
+          onPress={() => setIsSettingsModalVisible(false)}
+        >
+          <Text style={styles.closeButtonText}>Close</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
+  </View>
+</Modal>
+
+
+
     </View>
 </BottomSheet>
 
@@ -1353,30 +1514,82 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: 'gray',
   },
-  modalContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  modalContent: {
-    margin: 20,
-    backgroundColor: 'white',
-    padding: 20,
-    borderRadius: 10,
-    elevation: 5,
-  },
-  modalText: {
-    marginBottom: 15,
-    textAlign: 'center',
-    fontSize: 18,
+    modalContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    },
+    modalContent: {
+      width: '90%',
+      backgroundColor: 'white',
+      borderRadius: 20,
+      padding: 20,
+      shadowColor: '#000',
+      shadowOpacity: 0.2,
+      shadowOffset: { width: 0, height: 3 },
+      shadowRadius: 5,
+      elevation: 10,
+    },
+    scrollContent: {
+      paddingVertical: 20,
+    },
+    modalTitle: {
+      fontSize: 22,
+      fontWeight: 'bold',
+      textAlign: 'center',
+      color: '#2196F3',
+      marginBottom: 20,
+    },
+    optionButton: {
+      flexDirection: 'row', // Keep items in a row
+      justifyContent: 'space-between', // Space between text and switch
+      alignItems: 'center',
+      backgroundColor: '#F5F5F5',
+      paddingVertical: 12,
+      paddingHorizontal: 10,
+      borderRadius: 15,
+      marginBottom: 15,
+      shadowColor: '#000',
+      shadowOpacity: 0.1,
+      shadowOffset: { width: 0, height: 2 },
+      shadowRadius: 2,
+      elevation: 5,
+    },
+    optionTextContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flex: 1, // Allow it to take available space
+    },
+    optionText: {
+      fontSize: 18,
+      fontWeight: '500',
+      color: '#333',
+      marginLeft: 10,
+    },
+    optionIcon: {
+      marginRight: 10,
+    },
+    switch: {
+      marginLeft: 'auto', // Ensure it stays on the right
+    },
+    closeButton: {
+      backgroundColor: '#2196F3',
+      paddingVertical: 12,
+      paddingHorizontal: 20,
+      borderRadius: 25,
+      alignItems: 'center',
+      marginTop: 20,
+    },
+    closeButtonText: {
+      color: 'white',
+      fontSize: 16,
+      fontWeight: 'bold',
+    },  
+  closeButtonText: {
+    color: 'white',
+    fontSize: 16,
     fontWeight: 'bold',
-    color: 'black',
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: 20,
   },
   speedometer: {
     position: 'absolute',
@@ -1522,6 +1735,51 @@ summaryContainer: {
 shutdownIcon: {
   flex: 1, // Take up equal space on the right
   alignItems: 'flex-end', // Align icon to the right
+},  modalContainer: {
+  flex: 1,
+  justifyContent: 'center',
+  alignItems: 'center',
+  backgroundColor: 'rgba(0,0,0,0.5)', // semi-transparent background
+},
+modalContent: {
+  width: '80%',
+  backgroundColor: 'white',
+  borderRadius: 10,
+  padding: 20,
+  elevation: 5,
+},
+scrollContent: {
+  flexGrow: 1,
+  justifyContent: 'center',
+},
+modalTitle: {
+  fontSize: 24,
+  fontWeight: 'bold',
+  marginBottom: 20,
+  textAlign: 'center',
+  color: 'black',
+},
+optionContainer: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  marginBottom: 15,
+},
+optionText: {
+  fontSize: 18,
+  color: 'black',
+},
+closeButton: {
+  backgroundColor: '#2196F3',
+  padding: 10,
+  borderRadius: 5,
+  alignItems: 'center',
+  marginTop: 20,
+},
+closeButtonText: {
+  color: 'white',
+  fontSize: 16,
+  fontWeight: 'bold',
 },
 });
 

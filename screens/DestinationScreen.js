@@ -459,41 +459,88 @@ const handleToggleTrafficJam = (isEnabled) => {
       }
     };
   
-    return routes.map((route, index) => (
+    // First, render all unselected routes
+    const unselectedRoutes = routes.map((route, index) => {
+      if (index !== selectedRouteIndex) {
+        return (
+          <MapboxGL.ShapeSource
+            key={`route-source-${index}`}
+            id={`route-source-${index}`}
+            shape={route.featureCollection}
+          >
+            {/* Base route line */}
+            <MapboxGL.LineLayer
+              id={`base-route-line-${index}`}
+              style={{
+                lineWidth: 6,
+                lineColor: 'green', // Unselected routes in green
+                lineOpacity: 1,
+                lineCap: 'round',
+                lineJoin: 'round',
+              }}
+              filter={['==', ['get', 'color'], 'base']}
+            />
+            {/* Conditionally render Congestion overlays based on isTrafficJamEnabled */}
+            {isTrafficJamEnabled && (
+              <MapboxGL.LineLayer
+                id={`congestion-route-line-${index}`}
+                style={{
+                  lineWidth: 6,
+                  lineColor: ['get', 'color'],
+                  lineOpacity: 1,
+                  lineCap: 'round',
+                  lineJoin: 'round',
+                }}
+                filter={['all', ['!=', ['get', 'color'], 'base'], ['has', 'color']]}
+              />
+            )}
+          </MapboxGL.ShapeSource>
+        );
+      }
+    });
+  
+    // Render the selected route last to ensure it's on top
+    const selectedRoute = routes[selectedRouteIndex] && (
       <MapboxGL.ShapeSource
-        key={`route-source-${index}`}
-        id={`route-source-${index}`}
-        shape={route.featureCollection}
+        key={`route-source-${selectedRouteIndex}`}
+        id={`route-source-${selectedRouteIndex}`}
+        shape={routes[selectedRouteIndex].featureCollection}
       >
         {/* Base route line */}
         <MapboxGL.LineLayer
-          id={`base-route-line-${index}`}
+          id={`base-route-line-${selectedRouteIndex}`}
           style={{
             lineWidth: 6,
-            lineColor: index === selectedRouteIndex ? getRouteColor() : 'green', // Selected profile color or green for unselected
-            lineOpacity: 1, // Full opacity for all routes, change only color
+            lineColor: getRouteColor(), // Selected profile color
+            lineOpacity: 1,
             lineCap: 'round',
             lineJoin: 'round',
           }}
-          filter={['==', ['get', 'color'], 'base']} // Filter to render only the base route
+          filter={['==', ['get', 'color'], 'base']}
         />
-  
         {/* Conditionally render Congestion overlays based on isTrafficJamEnabled */}
         {isTrafficJamEnabled && (
-  <MapboxGL.LineLayer
-    id={`congestion-route-line-${index}`}
-    style={{
-      lineWidth: 6,
-      lineColor: ['get', 'color'], // Use the color from the route's congestion data
-      lineOpacity: 1, // Full opacity for all routes
-      lineCap: 'round',
-      lineJoin: 'round',
-    }}
-    filter={['all', ['!=', ['get', 'color'], 'base'], ['has', 'color']]} // Filter to render congestion overlays
-  />
-)}
+          <MapboxGL.LineLayer
+            id={`congestion-route-line-${selectedRouteIndex}`}
+            style={{
+              lineWidth: 6,
+              lineColor: ['get', 'color'],
+              lineOpacity: 1,
+              lineCap: 'round',
+              lineJoin: 'round',
+            }}
+            filter={['all', ['!=', ['get', 'color'], 'base'], ['has', 'color']]}
+          />
+        )}
       </MapboxGL.ShapeSource>
-    ));
+    );
+  
+    return (
+      <>
+        {unselectedRoutes}
+        {selectedRoute}
+      </>
+    );
   };
   
 

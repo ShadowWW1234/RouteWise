@@ -2,45 +2,45 @@ import { createSlice } from "@reduxjs/toolkit";
 
 const initialState = {
   origin: {
-    location: null,
-    description: '',
+    location: null,  // To store coordinates { lat, lng }
+    description: '',  // To store the name of the location
   },
   destination: {
-    location: null,
-    description: '',
+    location: null,  // To store coordinates { lat, lng }
+    description: '',  // To store the name of the location
   },
-  travelTimeInformation: null,  // Store travel time information, if needed
+  travelTimeInformation: null,  // Store travel time information
 };
 
 export const navSlice = createSlice({
   name: "nav",
   initialState,
   reducers: {
+    // Updates the origin with both location and description
     setOrigin: (state, action) => {
-      // Ensure both `location` and `description` are updated properly
       state.origin = {
-        location: action.payload.location, 
-        description: action.payload.description
+        location: action.payload.location || state.origin.location,  // Retain existing location if not provided
+        description: action.payload.description || state.origin.description,  // Retain existing description if not provided
       };
     },
+    // Updates the destination with both location and description
     setDestination: (state, action) => {
-      // Similar structure for destination
       state.destination = {
-        location: action.payload.location, 
-        description: action.payload.description
+        location: action.payload.location || state.destination.location,  // Retain existing location if not provided
+        description: action.payload.description || state.destination.description,  // Retain existing description if not provided
       };
     },
-    setTravelTimeInformation: (state, action) => {
-      // Update travel time information if available
-      state.travelTimeInformation = action.payload;
-    },
+    // Clears the origin data
     clearOrigin: (state) => {
-      // Optional: Clear origin data
-      state.origin = { location: null, description: '' };
+      state.origin = { location: null, description: '' };  // Reset origin data
     },
+    // Clears the destination data
     clearDestination: (state) => {
-      // Optional: Clear destination data
-      state.destination = { location: null, description: '' };
+      state.destination = { location: null, description: '' };  // Reset destination data
+    },
+    // Sets travel time information
+    setTravelTimeInformation: (state, action) => {
+      state.travelTimeInformation = action.payload;
     },
   },
 });
@@ -53,10 +53,9 @@ export const {
   clearDestination,
 } = navSlice.actions;
 
-// Selectors to retrieve origin, destination, and travel time info
+// Selectors
 export const selectOrigin = (state) => state.nav.origin;
 export const selectDestination = (state) => state.nav.destination;
-export const selectTravelTimeInformation = (state) =>
-  state.nav.travelTimeInformation;
+export const selectTravelTimeInformation = (state) => state.nav.travelTimeInformation;
 
 export default navSlice.reducer;

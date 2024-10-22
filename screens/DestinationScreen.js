@@ -140,6 +140,18 @@ useEffect(() => {
       }
     };
   }, [initialOrigin]);
+  useEffect(() => {
+    console.log('Initial Origin:', initialOrigin);
+    console.log('Destination:', destination);
+    console.log('Routes:', routes);
+  }, [initialOrigin, destination, routes]);
+  useEffect(() => {
+    const checkPermissions = async () => {
+      const granted = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
+      console.log('Location permission granted:', granted);
+    };
+    checkPermissions();
+  }, []);
   
   // Profile change handler from the SideBar
   const handleProfileChange = (newProfile) => {
@@ -592,8 +604,11 @@ const handleToggleTrafficJam = (isEnabled) => {
         <BottomSheet ref={bottomSheetRef} index={0} snapPoints={snapPoints}>
           <View style={styles.sheetContent}>
             <Text style={styles.sheetTitle}>
-              {destination.description.split(',')[0]}
-            </Text>
+               
+            {destination && destination.description 
+        ? destination.description.split(',')[0] 
+        : 'Unknown Destination'}
+                           </Text>
             <Text style={styles.sheetSubText}>
               Estimated Fuel:{' '}
               {estimatedFuelConsumption ? `${estimatedFuelConsumption} L` : 'Calculating...'}

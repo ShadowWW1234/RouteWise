@@ -146,17 +146,33 @@ const saveTravelHistory = (originName, originCoordinates, destinationName, desti
       [originName, destinationName],
       (tx, results) => {
         if (results.rows.length === 0) {
-          console.log('No duplicate found. Saving the new entry.');
+          // No exact duplicate of origin and destination
+          console.log('No exact duplicate found. Checking if the same destination exists.');
+
+          // Now, check if the same destination exists, even with a different origin
           txn.executeSql(
-            'INSERT INTO travel_history (origin, origin_lat, origin_lon, destination, destination_lat, destination_lon) VALUES (?, ?, ?, ?, ?, ?)',
-            [
-              originName, originCoordinates.latitude, originCoordinates.longitude,
-              destinationName, destinationCoordinates.latitude, destinationCoordinates.longitude
-            ],
-            () => { 
-              console.log(`Travel history saved successfully with origin: ${originName}, destination: ${destinationName}`);
+            'SELECT * FROM travel_history WHERE destination = ?',
+            [destinationName],
+            (tx2, destinationResults) => {
+              if (destinationResults.rows.length === 0) {
+                // No destination found, so we can insert the new entry
+                console.log('No duplicate destination found. Saving the new entry.');
+                txn.executeSql(
+                  'INSERT INTO travel_history (origin, origin_lat, origin_lon, destination, destination_lat, destination_lon) VALUES (?, ?, ?, ?, ?, ?)',
+                  [
+                    originName, originCoordinates.latitude, originCoordinates.longitude,
+                    destinationName, destinationCoordinates.latitude, destinationCoordinates.longitude
+                  ],
+                  () => { 
+                    console.log(`Travel history saved successfully with origin: ${originName}, destination: ${destinationName}`);
+                  },
+                  error => { console.error('Error saving travel history:', error); }
+                );
+              } else {
+                console.log(`Duplicate destination found for destination: ${destinationName}. Not saving.`);
+              }
             },
-            error => { console.error('Error saving travel history:', error); }
+            error => { console.error('Error checking for duplicate destination:', error); }
           );
         } else {
           console.log(`Duplicate found for origin: ${originName}, destination: ${destinationName}. Not saving.`);
@@ -166,6 +182,7 @@ const saveTravelHistory = (originName, originCoordinates, destinationName, desti
     );
   });
 };
+
 
 
 

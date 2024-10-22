@@ -24,6 +24,7 @@ import {
   FIREBASE_MESSAGING_SENDER_ID,
   FIREBASE_APP_ID
 } from '@env';
+import {IncidentProvider} from './screens/context/IncidentContext'
 // Create Stack Navigator
 const Stack = createNativeStackNavigator();
 
@@ -114,6 +115,7 @@ if (!firebase.apps.length) {
   return (
     <Provider store={store}>
       <GasConsumptionProvider> 
+      <IncidentProvider> 
       <MapStyleProvider>
         <NavigationContainer
           initialState={initialState}  // Pass initial state from AsyncStorage
@@ -160,6 +162,7 @@ if (!firebase.apps.length) {
           </Stack.Navigator>
         </NavigationContainer>
       </MapStyleProvider>
+      </IncidentProvider> 
       </GasConsumptionProvider>
     </Provider>
   );

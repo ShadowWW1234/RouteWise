@@ -11,6 +11,7 @@ import {
   Animated,
   AppState,
   Share,
+  Alert
 } from 'react-native';
 import MapboxGL from '@rnmapbox/maps';
 import * as turf from '@turf/turf';
@@ -28,6 +29,9 @@ import Summary from './Summary';
 import tw from 'tailwind-react-native-classnames';
 import SideBar from './SideBar';
 import InstructionsList from './component/InstructionList';
+import SQLite from 'react-native-sqlite-storage';
+
+
 
 MapboxGL.setAccessToken(MAPBOX_API_TOKEN);
 
@@ -147,11 +151,15 @@ const NavigationScreen = ({ route, navigation  }) => {
   const [avoidUnpaved, setAvoidUnpaved] = useState(true);
   const [avoidFerries, setAvoidFerries] = useState(true);
 
-  const [isLoadingTolls, setIsLoadingTolls] = useState(false);
-  const [isLoadingUnpaved, setIsLoadingUnpaved] = useState(false);
-  const [isLoadingFerries, setIsLoadingFerries] = useState(false);
-  const [isLoadingMapStyle, setIsLoadingMapStyle] = useState(false);
-  
+ 
+  const [traveledDistance, setTraveledDistance] = useState(0); // Traveled distance in meters
+ const [fuelUsedForTraveledDistance, setFuelUsedForTraveledDistance] = useState(0); // Fuel used for the traversed route
+ const [isUnfinishedRouteSheetVisible, setIsUnfinishedRouteSheetVisible] = useState(false);
+ const [selectedOrigin, setSelectingOrigin] = useState(null); // Initialize with null or default value
+ const [selectedDestination, setSelectedDestination] = useState(null); // Initialize selectedDestination
+
+
+ 
   const proximityThreshold = 70;  
 
   const toggleMapStyle = () => {
@@ -200,6 +208,93 @@ const NavigationScreen = ({ route, navigation  }) => {
     // Implement the logic for showing an overview of the route
   };
   
+
+// Function to open the SQLite database connection
+const getDBConnection = () => {
+  const db = SQLite.openDatabase(
+    { name: 'vehicle_data.db', location: 'default' },
+    () => console.log('Database opened successfully'),
+    (error) => console.error('Failed to open database:', error)
+  );
+  return db;
+};
+
+const saveFinishedRoute = async (
+  origin,
+  destination,
+  fuelUsed,
+  eta,
+  duration,
+  distance,
+  originName,
+  destinationName
+) => {
+  try {
+    console.log('Saving Route:');
+    console.log('Origin:', origin);
+    console.log('Destination:', destination);
+    console.log('Fuel Used:', fuelUsed);
+    console.log('ETA:', eta);
+    console.log('Duration:', duration);
+    console.log('Distance:', distance);
+
+    // Ensure all required fields are provided
+    if (
+      !origin ||
+      origin.latitude === null ||
+      origin.latitude === undefined ||
+      origin.longitude === null ||
+      origin.longitude === undefined ||
+      !destination ||
+      destination.latitude === null ||
+      destination.latitude === undefined ||
+      destination.longitude === null ||
+      destination.longitude === undefined ||
+      fuelUsed === null ||
+      fuelUsed === undefined ||
+      !eta ||
+      duration === null ||
+      duration === undefined ||
+      distance === null ||
+      distance === undefined
+    ) {
+      console.error('Invalid data provided for saving finished route.');
+      return;
+    }
+
+    const db = getDBConnection();
+    db.transaction((txn) => {
+      txn.executeSql(
+        `INSERT INTO travel_history 
+          (origin_name, origin_lat, origin_lon, destination_name, destination_lat, destination_lon, distance, fuel_used, eta, duration) 
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+        [
+          originName || 'Origin',
+          origin.latitude,
+          origin.longitude,
+          destinationName || 'Destination',
+          destination.latitude,
+          destination.longitude,
+          distance,
+          fuelUsed,
+          eta ? eta.toISOString() : '',
+          duration,
+        ],
+        () => {
+          console.log('Finished route saved successfully.');
+        },
+        (error) => {
+          console.error('Error saving finished route:', error);
+        }
+      );
+    });
+  } catch (error) {
+    console.error('Transaction failed:', error);
+  }
+};
+
+
+ 
   // Function to check if the user is off-route
   const checkIfOffRoute = (currentPosition, route) => {
     if (!currentPosition || !Array.isArray(route) || route.length === 0) return false;
@@ -286,15 +381,72 @@ const NavigationScreen = ({ route, navigation  }) => {
         console.error('Error sharing:', error.message);
     }
 };
+useEffect(() => {
+  console.log('Route Params:', route.params); // Log to see the incoming parameters
+}, [route.params]);
+
 
 const handleFinishRoute = () => {
-    setIsFinishRouteSheetVisible(false); // Hide the sheet after finishing
-    navigation.reset({
-        index: 0,
-        routes: [{ name: 'SearchScreen' }],
-    });
+  console.log('Final Data:');
+  console.log('Origin:', origin);
+  console.log('Destination:', destination);
+  console.log('Fuel Used:', fuelUsedForTraveledDistance);
+  console.log('ETA:', eta);
+  console.log('Duration:', totalDuration);
+  console.log('Distance:', totalDistance);
+
+  // Check if essential fields are valid
+  if (
+    !origin ||
+    !destination ||
+    fuelUsedForTraveledDistance === null ||
+    fuelUsedForTraveledDistance === undefined ||
+    !eta ||
+    totalDuration === null ||
+    totalDuration === undefined ||
+    totalDistance === null ||
+    totalDistance === undefined
+  ) {
+    console.error('Missing essential data for saving the finished route.');
+    return;
+  }
+
+  setIsFinishRouteSheetVisible(false); // Hide the sheet after finishing
+
+  // Extract names from origin and destination
+  const originName = origin.description || 'Current Location';
+  const destinationName = destination.description || 'Destination';
+
+  // Save the route to the database
+  saveFinishedRoute(
+    origin,
+    destination,
+    fuelUsedForTraveledDistance,
+    eta,
+    totalDuration,
+    traveledDistance,
+    originName,
+    destinationName
+  );
+
+
+  // Reset navigation and return to SearchScreen
+  navigation.reset({
+    index: 0,
+    routes: [{ name: 'SearchScreen' }],
+  });
 };
 
+
+
+
+const handleunFinishRoute = () => {
+  setIsFinishRouteSheetVisible(false); // Hide the sheet after finishing
+  navigation.reset({
+      index: 0,
+      routes: [{ name: 'SearchScreen' }],
+  });
+};
 
 const recalculateRoute = async (currentPosition) => {
   if (!currentPosition || !destination) {
@@ -451,7 +603,8 @@ const fetchDirections = async () => {
     const routeData = response.data.routes[0]; // Fetch the first route
     setFullRoute(routeData.geometry.coordinates); // Set full route coordinates
     setInstructions(routeData.legs.flatMap((leg) => leg.steps)); // Set instructions for the route
-
+    setTotalDistance(routeData.distance); // Total distance in meters
+    setTotalDuration(routeData.duration); // Total duration in seconds
     // Set the first instruction
     if (routeData.legs.length > 0 && routeData.legs[0].steps.length > 0) {
       setCurrentInstruction(routeData.legs[0].steps[0].maneuver.instruction);
@@ -600,7 +753,7 @@ const fetchDirections = async () => {
       stops,
     });
   };
-
+ 
   // Effect to handle back button press
   useEffect(() => {
     fetchDirections();
@@ -709,32 +862,49 @@ const handleAvoidFerriesToggle = (value) => {
  
 
 
-  // Effect to calculate fuel consumption based on remaining distance
-  useEffect(() => {
-  //  console.log('Effect triggered with:', { currentPosition, fullRoute, gasConsumption });
-  
-    if (currentPosition && fullRoute.length > 0 && gasConsumption > 0) {
-      try {
-        const remainingRoute = turf.lineSlice(
-          turf.point(currentPosition),
-          turf.point(fullRoute[fullRoute.length - 1]),
-          turf.lineString(fullRoute)
-        );
+// Effect to calculate fuel consumption based on traveled and remaining distance
+useEffect(() => {
+  if (currentPosition && fullRoute.length > 0 && gasConsumption > 0) {
+    try {
+      // Define the full route as a line
+      const routeLine = turf.lineString(fullRoute);
 
-        const remainingDistanceInMeters = turf.length(remainingRoute, { units: 'meters' });
-        if (isFinite(remainingDistanceInMeters)) {
-          const fuelUsedForTrip = (remainingDistanceInMeters / 1000) / gasConsumption; // Convert to km and divide by consumption rate
-      //    console.log(`Fuel used for the trip: ${fuelUsedForTrip.toFixed(2)} L`);
-          setFuelUsed(parseFloat(fuelUsedForTrip.toFixed(2)));
-        } else {
-         // console.warn('Invalid remaining distance calculated.');
-        }
-      } catch (error) {
-        console.error('Error calculating route metrics:', error);
+      // Calculate the remaining distance from the current position to the destination
+      const remainingRoute = turf.lineSlice(
+        turf.point(currentPosition),
+        turf.point(fullRoute[fullRoute.length - 1]), // Destination
+        routeLine
+      );
+      const remainingDistanceInMeters = turf.length(remainingRoute, { units: 'meters' });
+      setRemainingDistance(remainingDistanceInMeters); // Update remaining distance state
+
+      // Calculate the traversed distance from the start of the route to the current position
+      const traversedRoute = turf.lineSlice(
+        turf.point(fullRoute[0]), // Starting point
+        turf.point(currentPosition),
+        routeLine
+      );
+      const traversedDistanceInMeters = turf.length(traversedRoute, { units: 'meters' });
+      setTraveledDistance(traversedDistanceInMeters); // Update traveled distance state
+
+      // Calculate the fuel used for the traveled distance
+      if (isFinite(traversedDistanceInMeters) && traversedDistanceInMeters > 0) {
+        const fuelUsedForTraveledDistance = (traversedDistanceInMeters / 1000) / gasConsumption; // Convert to km and divide by consumption rate
+        setFuelUsedForTraveledDistance(parseFloat(fuelUsedForTraveledDistance.toFixed(2))); // Update fuel used state for the traveled distance
       }
-    }  
-  }, [currentPosition, fullRoute, gasConsumption]);
- 
+
+      // Calculate the fuel used for the remaining distance
+      if (isFinite(remainingDistanceInMeters) && remainingDistanceInMeters > 0) {
+        const fuelUsedForRemainingDistance = (remainingDistanceInMeters / 1000) / gasConsumption; // Convert to km and divide by consumption rate
+        setFuelUsed(parseFloat(fuelUsedForRemainingDistance.toFixed(2))); // Update fuel used state for the remaining distance
+      }
+
+    } catch (error) {
+      console.error('Error calculating route metrics:', error);
+    }
+  }
+}, [currentPosition, fullRoute, gasConsumption]);
+
 // Effect to show/hide the bottom sheet for destination reached
 useEffect(() => {
   if (isDestinationReached) {
@@ -914,8 +1084,8 @@ const recenterMap = () => {
   // Function to handle exiting navigation
   const handleExitNavigation = () => {
 
-// Show the "Finish Route" bottom sheet when the user tries to quit
-setIsFinishRouteSheetVisible(true); 
+    setIsUnfinishedRouteSheetVisible(true);  // Show the new bottom sheet
+
 
 
     setInstructions([]);
@@ -1260,7 +1430,7 @@ setIsFinishRouteSheetVisible(true);
       {/* Shutdown Icon (Right-Aligned) */}
       <TouchableOpacity
         style={styles.shutdownIcon}
-        onPress={() => setIsFinishRouteSheetVisible(true)}  
+        onPress={() => setIsUnfinishedRouteSheetVisible(true)}  
       >
         <Ionicons name="power" size={30} color="red" />
       </TouchableOpacity>
@@ -1419,6 +1589,47 @@ setIsFinishRouteSheetVisible(true);
 
 
     </View>
+</BottomSheet>
+{/* Unfinished Route BottomSheet */}
+<BottomSheet
+  ref={bottomSheetRef}
+  index={isUnfinishedRouteSheetVisible ? 0 : -1}  // Show or hide based on visibility state
+  snapPoints={snapPoints}
+  enablePanDownToClose={false}
+  handleIndicatorStyle={{ backgroundColor: 'gray' }}
+>
+  <View style={styles.unfinishedRouteContainer}>
+    <Text style={styles.modalTitle}>Unfinished Route</Text>
+
+    {/* Display traveled and remaining distances */}
+    <View style={styles.tripDetailsContainer}>
+      <Text style={styles.tripDetailsText}>
+        Traveled Distance: {(traveledDistance / 1000).toFixed(2)} km
+      </Text>
+      <Text style={styles.tripDetailsText}>
+        Fuel Used (Traveled): {fuelUsedForTraveledDistance.toFixed(2)} L
+      </Text>
+      <Text style={styles.tripDetailsText}>
+        Remaining Distance: {(remainingDistance / 1000).toFixed(2)} km
+      </Text>
+      <Text style={styles.tripDetailsText}>
+        Fuel Used (Remaining): {fuelUsed.toFixed(2)} L
+      </Text>
+    </View>
+
+    {/* Share and Finish Buttons */}
+    <View style={styles.buttonContainer}>
+      <TouchableOpacity style={styles.shareButton} onPress={handleShare}>
+        <Ionicons name="share-outline" size={24} color="white" />
+        <Text style={styles.buttonText}>Share</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.finishButton} onPress={() => handleunFinishRoute()}>
+        <Ionicons name="checkmark-outline" size={24} color="white" />
+        <Text style={styles.buttonText}>Finish</Text>
+      </TouchableOpacity>
+    </View>
+  </View>
 </BottomSheet>
 
         {/* Exit Navigation Modal */}
@@ -1777,6 +1988,59 @@ closeButton: {
   marginTop: 20,
 },
 closeButtonText: {
+  color: 'white',
+  fontSize: 16,
+  fontWeight: 'bold',
+},  unfinishedRouteContainer: {
+  flex: 1,
+  padding: 20,
+  alignItems: 'center',
+},
+modalTitle: {
+  fontSize: 20,
+  fontWeight: 'bold',
+  marginBottom: 15,
+  color: 'black',
+},
+tripDetailsContainer: {
+  marginTop: 10,
+  paddingHorizontal: 20,
+  paddingVertical: 10,
+  backgroundColor: '#F5F5F5',
+  borderRadius: 10,
+},
+tripDetailsText: {
+  fontSize: 16,
+  color: 'black',
+  marginVertical: 5,
+},
+buttonContainer: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  width: '100%',
+  marginTop: 20,
+},
+shareButton: {
+  flexDirection: 'row',
+  backgroundColor: '#4CAF50',
+  padding: 15,
+  borderRadius: 10,
+  flex: 1,
+  justifyContent: 'center',
+  alignItems: 'center',
+  marginRight: 10,
+},
+finishButton: {
+  flexDirection: 'row',
+  backgroundColor: '#FF5722',
+  padding: 15,
+  borderRadius: 10,
+  flex: 1,
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+buttonText: {
+  marginLeft: 10,
   color: 'white',
   fontSize: 16,
   fontWeight: 'bold',

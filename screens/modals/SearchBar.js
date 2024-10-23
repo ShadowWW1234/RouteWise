@@ -128,64 +128,13 @@ useEffect(() => {
     });
   };
 
-//  // Call this function when the component mounts
-// useEffect(() => {
-//   clearTravelHistoryTable();
-// }, []);
+ // Call this function when the component mounts
+/*useEffect(() => {
+  clearTravelHistoryTable();
+}, []);
+*/
 
-
-const saveTravelHistory = (originName, originCoordinates, destinationName, destinationCoordinates) => {
-  const dbs = getDBConnection();
-
-  dbs.transaction(txn => {
-    console.log(`Checking if the origin: ${originName} and destination: ${destinationName} already exist.`);
-
-    // First, check if the same origin and destination already exist in the history
-    txn.executeSql(
-      'SELECT * FROM travel_history WHERE origin = ? AND destination = ?',
-      [originName, destinationName],
-      (tx, results) => {
-        if (results.rows.length === 0) {
-          // No exact duplicate of origin and destination
-          console.log('No exact duplicate found. Checking if the same destination exists.');
-
-          // Now, check if the same destination exists, even with a different origin
-          txn.executeSql(
-            'SELECT * FROM travel_history WHERE destination = ?',
-            [destinationName],
-            (tx2, destinationResults) => {
-              if (destinationResults.rows.length === 0) {
-                // No destination found, so we can insert the new entry
-                console.log('No duplicate destination found. Saving the new entry.');
-                txn.executeSql(
-                  'INSERT INTO travel_history (origin, origin_lat, origin_lon, destination, destination_lat, destination_lon) VALUES (?, ?, ?, ?, ?, ?)',
-                  [
-                    originName, originCoordinates.latitude, originCoordinates.longitude,
-                    destinationName, destinationCoordinates.latitude, destinationCoordinates.longitude
-                  ],
-                  () => { 
-                    console.log(`Travel history saved successfully with origin: ${originName}, destination: ${destinationName}`);
-                  },
-                  error => { console.error('Error saving travel history:', error); }
-                );
-              } else {
-                console.log(`Duplicate destination found for destination: ${destinationName}. Not saving.`);
-              }
-            },
-            error => { console.error('Error checking for duplicate destination:', error); }
-          );
-        } else {
-          console.log(`Duplicate found for origin: ${originName}, destination: ${destinationName}. Not saving.`);
-        }
-      },
-      error => { console.error('Error checking for duplicate history:', error); }
-    );
-  });
-};
-
-
-
-
+ 
 
   const handleOriginSelect = (place) => {
     const { center, place_name } = place;
@@ -206,8 +155,6 @@ const saveTravelHistory = (originName, originCoordinates, destinationName, desti
     setDestinationSearchText(place_name);
     setDestinationSearchResults([]);
 
-  // Save the travel history with both name and coordinates
-  saveTravelHistory(originSearchText, selectedOrigin, place_name, destinationLocation);
   
     // Navigate to DestinationScreen with origin and destination as parameters
     navigation.navigate('DestinationScreen', { origin: selectedOrigin, destination: destinationLocation });

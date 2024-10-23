@@ -1,5 +1,3 @@
-// MapScreen.js
-
 import {
   StyleSheet,
   View,
@@ -8,43 +6,45 @@ import {
   Text,
   Alert,
   Modal,
-  Image 
+  Image,
+  
 } from 'react-native';
-import React, { useEffect, useRef, useContext, useState } from 'react';
+import React, {useEffect, useRef, useContext, useState} from 'react';
 import MapboxGL from '@rnmapbox/maps';
 import Geolocation from '@react-native-community/geolocation';
-import { useDispatch, useSelector } from 'react-redux';
-import { setOrigin, selectOrigin } from '../slices/navSlice';
-import { MapStyleContext } from './context/MapStyleContext';
-import { MAPBOX_API_TOKEN } from '@env';
+import {useDispatch, useSelector} from 'react-redux';
+import {setOrigin, selectOrigin} from '../slices/navSlice';
+import {MapStyleContext} from './context/MapStyleContext';
+import {MAPBOX_API_TOKEN} from '@env';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { IncidentContext } from './context/IncidentContext';
+import {IncidentContext} from './context/IncidentContext';
 import firestore from '@react-native-firebase/firestore';
 import BottomSheet from '@gorhom/bottom-sheet';
-import { getDistance } from 'geolib';
-import { format } from 'date-fns';
+import {getDistance} from 'geolib';
+import {format} from 'date-fns';
+
+
 
 MapboxGL.setAccessToken(MAPBOX_API_TOKEN);
 
-const MapScreen = ({ destination }) => {
+const MapScreen = ({destination}) => {
   const dispatch = useDispatch();
   const origin = useSelector(selectOrigin);
   const mapRef = useRef(null);
-  const { mapStyle } = useContext(MapStyleContext);
+  const {mapStyle} = useContext(MapStyleContext);
   const [mapError, setMapError] = useState(null);
   const [currentSpeed, setCurrentSpeed] = useState(0);
   const [isRecentered, setIsRecentered] = useState(true);
   const cameraRef = useRef(null);
   const [locationError, setLocationError] = useState(null);
 
-  const { incidents, addIncident } = useContext(IncidentContext);
+  const {incidents, addIncident} = useContext(IncidentContext);
   const [incidentLocation, setIncidentLocation] = useState(null);
- 
+
   const [isModalVisible, setIsModalVisible] = useState(false);
 
   const [selectedIncidentType, setSelectedIncidentType] = useState(null);
   const [selectedIncident, setSelectedIncident] = useState(null);
-
 
   const badWeatherIcon = require('../assets/bad_weather.png');
   const trafficJamIcon = require('../assets/traffic_jam.png');
@@ -52,9 +52,8 @@ const MapScreen = ({ destination }) => {
   const hazardIcon = require('../assets/hazard.png');
   const closureIcon = require('../assets/roadclose.png');
   const policeIcon = require('../assets/police.png');
-  
 
-  const handleMapError = (error) => {
+  const handleMapError = error => {
     if (error.message.includes('Source mapboxUserLocation is not in style')) {
       console.warn('User location source not found in style, ignoring error.');
       return;
@@ -73,7 +72,7 @@ const MapScreen = ({ destination }) => {
           buttonNeutral: 'Ask Me Later',
           buttonNegative: 'Cancel',
           buttonPositive: 'OK',
-        }
+        },
       );
 
       if (granted === PermissionsAndroid.RESULTS.GRANTED) {
@@ -86,35 +85,33 @@ const MapScreen = ({ destination }) => {
       console.warn(err);
     }
   };
- 
-  
+
   const incidentTypes = [
-    { id: 'bad_weather', label: 'Bad Weather', icon: badWeatherIcon },
-    { id: 'traffic_jam', label: 'Traffic Jam', icon: trafficJamIcon },
-    { id: 'crash', label: 'Crash', icon: crashIcon },
-    { id: 'hazard', label: 'Hazard', icon: hazardIcon },
-    { id: 'closure', label: 'Closure', icon: closureIcon },
-    { id: 'police', label: 'Police', icon: policeIcon },
+    {id: 'bad_weather', label: 'Bad Weather', icon: badWeatherIcon},
+    {id: 'traffic_jam', label: 'Traffic Jam', icon: trafficJamIcon},
+    {id: 'crash', label: 'Crash', icon: crashIcon},
+    {id: 'hazard', label: 'Hazard', icon: hazardIcon},
+    {id: 'closure', label: 'Closure', icon: closureIcon},
+    {id: 'police', label: 'Police', icon: policeIcon},
   ];
-  
-  
+
   const handleSubmitIncident = async () => {
     if (!incidentLocation) {
       Alert.alert('Error', 'Unable to get your location. Please try again.');
       return;
     }
-  
+
     if (!selectedIncidentType) {
       Alert.alert('Error', 'Please select an incident type.');
       return;
     }
-  
+
     const newIncident = {
       type: selectedIncidentType,
       coordinates: incidentLocation,
       timestamp: new Date().toISOString(),
     };
-  
+
     try {
       await addIncident(newIncident);
       Alert.alert('Success', 'Incident reported successfully!');
@@ -125,7 +122,6 @@ const MapScreen = ({ destination }) => {
       Alert.alert('Error', 'Failed to report incident.');
     }
   };
-  
 
   useEffect(() => {
     getLocation(); // Fetch the user's location when the component mounts
@@ -145,7 +141,7 @@ const MapScreen = ({ destination }) => {
     }
   }, [destination]);
 
-  const handleLocationError = (error) => {
+  const handleLocationError = error => {
     switch (error.code) {
       case 1: // PERMISSION_DENIED
         setLocationError('Permission denied. Please allow access to location.');
@@ -159,49 +155,50 @@ const MapScreen = ({ destination }) => {
     }
   };
 
-  const formatTimestamp = (isoString) => {
+  const formatTimestamp = isoString => {
     const date = new Date(isoString);
     return date.toLocaleString('en-US', {
       dateStyle: 'medium',
       timeStyle: 'short',
     });
   };
-  
-  
 
-  const handleIncidentPress = async (event) => {
+  const handleIncidentPress = async event => {
     console.log('pressed');
     const features = event.features;
     if (features && features.length > 0) {
       const incidentFeature = features[0];
       const incidentProperties = incidentFeature.properties;
       const incidentId = incidentProperties.id;
-  
+
       // Find the incident in the incidents array
-      const incident = incidents.find((inc) => inc.id === incidentId);
- 
+      const incident = incidents.find(inc => inc.id === incidentId);
+
       if (incident) {
         await handleIncidentSelection(incident);
       }
     }
   };
-  
-  const handleIncidentSelection = async (incident) => {
+
+  const handleIncidentSelection = async incident => {
     console.log('handleIncidentSelection called with incident:', incident);
     if (origin.location) {
       // Calculate distance
       const distance = getDistance(
-        { latitude: origin.location.latitude, longitude: origin.location.longitude },
-        { latitude: incident.coordinates[1], longitude: incident.coordinates[0] }
+        {
+          latitude: origin.location.latitude,
+          longitude: origin.location.longitude,
+        },
+        {latitude: incident.coordinates[1], longitude: incident.coordinates[0]},
       );
       const distanceInKm = (distance / 1000).toFixed(1);
-  
+
       // Fetch location name
       const locationName = await fetchLocationName(
         incident.coordinates[0],
-        incident.coordinates[1]
+        incident.coordinates[1],
       );
-  
+
       // Update selected incident with additional info
       const updatedIncident = {
         ...incident,
@@ -209,18 +206,17 @@ const MapScreen = ({ destination }) => {
         locationName: locationName,
       };
       setSelectedIncident(updatedIncident);
-  
+
       console.log('selectedIncident updated:', updatedIncident);
     } else {
       Alert.alert('Location Error', 'Unable to get your current location.');
     }
   };
-  
-  
+
   const fetchLocationName = async (longitude, latitude) => {
     try {
       const response = await fetch(
-        `https://api.mapbox.com/geocoding/v5/mapbox.places/${longitude},${latitude}.json?access_token=${MAPBOX_API_TOKEN}`
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${longitude},${latitude}.json?access_token=${MAPBOX_API_TOKEN}`,
       );
       const data = await response.json();
       if (data.features && data.features.length > 0) {
@@ -232,13 +228,13 @@ const MapScreen = ({ destination }) => {
       return 'Unknown location';
     }
   };
-  
+
   const getLocation = () => {
     console.log('Fetching current location...');
 
     Geolocation.getCurrentPosition(
-      (position) => {
-        const { longitude, latitude } = position.coords;
+      position => {
+        const {longitude, latitude} = position.coords;
         setIncidentLocation([longitude, latitude]); // Set the user's location
 
         console.log('Incident location set to:', [longitude, latitude]); // Log the coordinates for debugging
@@ -246,18 +242,18 @@ const MapScreen = ({ destination }) => {
         // Update the Redux state with the new location
         dispatch(
           setOrigin({
-            location: { latitude, longitude },
+            location: {latitude, longitude},
             description: 'Your current location',
-          })
+          }),
         );
 
         setLocationError(null); // Clear any location errors
       },
-      (error) => {
+      error => {
         console.error('Error fetching location:', error); // Log any errors
         handleLocationError(error); // Handle the error
       },
-      { enableHighAccuracy: true, timeout: 60000, maximumAge: 1000 } // Request high accuracy
+      {enableHighAccuracy: true, timeout: 60000, maximumAge: 1000}, // Request high accuracy
     );
   };
 
@@ -276,10 +272,11 @@ const MapScreen = ({ destination }) => {
     type: 'FeatureCollection',
     features: incidents
       .filter(
-        (incident) =>
-          Array.isArray(incident.coordinates) && incident.coordinates.length === 2
+        incident =>
+          Array.isArray(incident.coordinates) &&
+          incident.coordinates.length === 2,
       )
-      .map((incident) => ({
+      .map(incident => ({
         type: 'Feature',
         geometry: {
           type: 'Point',
@@ -293,47 +290,44 @@ const MapScreen = ({ destination }) => {
       })),
   };
 
-
   return (
     <View style={styles.container}>
       {mapError && (
         <Text style={styles.errorText}>Error loading map: {mapError}</Text>
       )}
       {locationError && <Text style={styles.errorText}>{locationError}</Text>}
-      
-        {/* Incident Details Panel */}
-  {selectedIncident && (
- 
-<View style={styles.incidentDetailsContainer}>
-  <View style={styles.incidentDetails}>
-    <Image
-      source={
-        incidentTypes.find((type) => type.id === selectedIncident.type).icon
-      }
-      style={styles.incidentDetailsIcon}
-      resizeMode="contain"
-    />
-    <View style={styles.incidentDetailsText}>
-      <Text style={styles.incidentDetailsDistance}>
-        {selectedIncident.distance} km away
-      </Text>
-      <Text style={styles.incidentDetailsLocation}>
-        {selectedIncident.locationName}
-      </Text>
-      <Text style={styles.incidentDetailsTime}>
-        Reported: {formatTimestamp(selectedIncident.timestamp)}
-      </Text>
-    </View>
-    <TouchableOpacity
-      onPress={() => setSelectedIncident(null)}
-      style={styles.incidentDetailsClose}
-    >
-      <Ionicons name="close" size={24} color="black" />
-    </TouchableOpacity>
-  </View>
-</View>
 
-)}
+      {/* Incident Details Panel */}
+      {selectedIncident && (
+        <View style={styles.incidentDetailsContainer}>
+          <View style={styles.incidentDetails}>
+            <Image
+              source={
+                incidentTypes.find(type => type.id === selectedIncident.type)
+                  .icon
+              }
+              style={styles.incidentDetailsIcon}
+              resizeMode="contain"
+            />
+            <View style={styles.incidentDetailsText}>
+              <Text style={styles.incidentDetailsDistance}>
+                {selectedIncident.distance} km away
+              </Text>
+              <Text style={styles.incidentDetailsLocation}>
+                {selectedIncident.locationName}
+              </Text>
+              <Text style={styles.incidentDetailsTime}>
+                Reported: {formatTimestamp(selectedIncident.timestamp)}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => setSelectedIncident(null)}
+              style={styles.incidentDetailsClose}>
+              <Ionicons name="close" size={24} color="black" />
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       <MapboxGL.MapView
         ref={mapRef}
@@ -342,8 +336,7 @@ const MapScreen = ({ destination }) => {
         styleURL={mapStyle}
         onError={handleMapError}
         onCameraChanged={() => setIsRecentered(false)}
-        onMapIdle={() => setIsRecentered(false)}
-      >
+        onMapIdle={() => setIsRecentered(false)}>
         <MapboxGL.Camera
           ref={cameraRef}
           zoomLevel={16}
@@ -362,7 +355,7 @@ const MapScreen = ({ destination }) => {
             androidRenderMode="gps"
             visible={true}
             showsUserHeadingIndicator={true}
-            onUpdate={(location) => {
+            onUpdate={location => {
               dispatch(
                 setOrigin({
                   location: {
@@ -370,7 +363,7 @@ const MapScreen = ({ destination }) => {
                     longitude: location.coords.longitude,
                   },
                   description: 'Your current location',
-                })
+                }),
               );
               setCurrentSpeed(location.coords.speed || 0); // Update speedometer
             }}
@@ -379,38 +372,36 @@ const MapScreen = ({ destination }) => {
 
         {/* Load custom icons */}
         <MapboxGL.Images
-          images={{  
-    'bad_weather-icon': require('../assets/bad_weather.png'),
-    'traffic_jam-icon': require('../assets/traffic_jam.png'),
-    'crash-icon': require('../assets/crash.png'),
-    'hazard-icon': require('../assets/hazard.png'),
-    'closure-icon': require('../assets/roadclose.png'),
-  'police-icon': require('../assets/police.png'), 
-  }}
-       />
+          images={{
+            'bad_weather-icon': require('../assets/bad_weather.png'),
+            'traffic_jam-icon': require('../assets/traffic_jam.png'),
+            'crash-icon': require('../assets/crash.png'),
+            'hazard-icon': require('../assets/hazard.png'),
+            'closure-icon': require('../assets/roadclose.png'),
+            'police-icon': require('../assets/police.png'),
+          }}
+        />
 
         {/* Display incidents using ShapeSource and SymbolLayer */}
-        <MapboxGL.ShapeSource id="incidentsSource" 
-        shape={incidentsGeoJSON}
+        <MapboxGL.ShapeSource
+          id="incidentsSource"
+          shape={incidentsGeoJSON}
           onPress={handleIncidentPress}>
-  <MapboxGL.SymbolLayer
-    id="incidentsSymbols"
-    minZoomLevel={14}
-    maxZoomLevel={22}
-    style={{
-      iconImage: ['get', 'icon'],
-      iconSize: 0.1, // Reduced icon size
-      iconAllowOverlap: true,
-      iconIgnorePlacement: true,
-      iconAnchor: 'bottom',
-      iconPitchAlignment: 'map',
-      iconRotationAlignment: 'map',
-    }}
-  />
-</MapboxGL.ShapeSource>
-
-
-
+          <MapboxGL.SymbolLayer
+            id="incidentsSymbols"
+            minZoomLevel={14}
+            maxZoomLevel={22}
+            style={{
+              iconImage: ['get', 'icon'],
+              iconSize: 0.1, // Reduced icon size
+              iconAllowOverlap: true,
+              iconIgnorePlacement: true,
+              iconAnchor: 'bottom',
+              iconPitchAlignment: 'map',
+              iconRotationAlignment: 'map',
+            }}
+          />
+        </MapboxGL.ShapeSource>
       </MapboxGL.MapView>
 
       {/* Recenter Button */}
@@ -427,82 +418,74 @@ const MapScreen = ({ destination }) => {
         <Text style={styles.speedometerUnit}> km/h</Text>
       </View>
 
+   
       {/* Incident Reporting Button */}
-    {/* Incident Reporting Button */}
-<TouchableOpacity
-  style={styles.incidentButton}
-  onPress={() => setIsModalVisible(true)}
->
-  <Ionicons
-    name="warning-outline" // Choose an icon that represents reporting an incident
-    size={24}
-    color="white"
-    style={styles.incidentButtonIcon}
-  />
-  <Text style={styles.incidentButtonText}>Report</Text>
-</TouchableOpacity>
-
-
-
-<Modal
-  animationType="slide"
-  transparent={true}
-  visible={isModalVisible}
-  onRequestClose={() => {
-    setIsModalVisible(false);
-    setSelectedIncidentType(null);
-  }}
->
-  <View style={styles.modalContainer}>
-    <View style={styles.modalContent}>
-      <Text style={styles.modalTitle}>Select Incident Type</Text>
-      <View style={styles.incidentGrid}>
-        {incidentTypes.map((incident) => (
-          <TouchableOpacity
-          key={incident.id}
-          style={[
-            styles.incidentItem,
-            selectedIncidentType === incident.id && styles.selectedIncidentItem,
-          ]}
-          onPress={() => setSelectedIncidentType(incident.id)}
-        >
-          <Image
-            source={incident.icon}
-            style={styles.incidentIcon}
-            resizeMode="contain"
-          />
-          {selectedIncidentType === incident.id && (
-            <Ionicons
-              name="checkmark-circle"
-              size={24}
-              color="green"
-              style={styles.checkmarkIcon}
-            />
-          )}
-          <Text style={styles.incidentLabel}>{incident.label}</Text>
-        </TouchableOpacity>
-        
-        ))}
-      </View>
       <TouchableOpacity
-        style={styles.submitButton}
-        onPress={handleSubmitIncident}
-      >
-        <Text style={styles.submitButtonText}>Report Incident</Text>
+        style={styles.incidentButton}
+        onPress={() => setIsModalVisible(true)}>
+        <Ionicons
+          name="warning-outline" // Choose an icon that represents reporting an incident
+          size={24}
+          color="white"
+          style={styles.incidentButtonIcon}
+        />
+        <Text style={styles.incidentButtonText}>Report</Text>
       </TouchableOpacity>
-      <TouchableOpacity
-        style={styles.cancelButton}
-        onPress={() => {
+
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={isModalVisible}
+        onRequestClose={() => {
           setIsModalVisible(false);
           setSelectedIncidentType(null);
-        }}
-      >
-        <Text style={styles.cancelButtonText}>Cancel</Text>
-      </TouchableOpacity>
-    </View>
-  </View>
-</Modal>
-
+        }}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Select Incident Type</Text>
+            <View style={styles.incidentGrid}>
+              {incidentTypes.map(incident => (
+                <TouchableOpacity
+                  key={incident.id}
+                  style={[
+                    styles.incidentItem,
+                    selectedIncidentType === incident.id &&
+                      styles.selectedIncidentItem,
+                  ]}
+                  onPress={() => setSelectedIncidentType(incident.id)}>
+                  <Image
+                    source={incident.icon}
+                    style={styles.incidentIcon}
+                    resizeMode="contain"
+                  />
+                  {selectedIncidentType === incident.id && (
+                    <Ionicons
+                      name="checkmark-circle"
+                      size={24}
+                      color="green"
+                      style={styles.checkmarkIcon}
+                    />
+                  )}
+                  <Text style={styles.incidentLabel}>{incident.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TouchableOpacity
+              style={styles.submitButton}
+              onPress={handleSubmitIncident}>
+              <Text style={styles.submitButtonText}>Report Incident</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={() => {
+                setIsModalVisible(false);
+                setSelectedIncidentType(null);
+              }}>
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
@@ -510,8 +493,8 @@ const MapScreen = ({ destination }) => {
 export default MapScreen;
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  map: { flex: 1 },
+  container: {flex: 1},
+  map: {flex: 1},
   recenterButton: {
     position: 'absolute',
     bottom: 100,
@@ -558,10 +541,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   incidentButtonText: {
-   
     fontSize: 12,
     fontWeight: 'bold',
-   color:'white'
+    color: 'white',
   },
   incidentIcon: {
     width: 20,
@@ -577,7 +559,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f0f0f0',
     position: 'relative', // Needed for absolute positioning
   },
-  
+
   modalContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -631,23 +613,28 @@ const styles = StyleSheet.create({
     color: 'black',
     fontSize: 16,
     fontWeight: 'bold',
-  },incidentLabel:{
-    color:'black',
+  },
+  incidentLabel: {
+    color: 'black',
     fontSize: 13,
-    fontWeight:'bold'
-  },checkmarkIcon: {
+    fontWeight: 'bold',
+  },
+  checkmarkIcon: {
     position: 'absolute',
     top: 5,
     right: 5,
-  },selectedIncidentItem: {
+  },
+  selectedIncidentItem: {
     borderColor: 'green',
     borderWidth: 2, // Optional: Highlight the selected item
-  },incidentGrid: {
+  },
+  incidentGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
     alignItems: 'center',
-  },incidentDetailsContainer: {
+  },
+  incidentDetailsContainer: {
     position: 'absolute',
     top: 0,
     width: '100%',
@@ -656,43 +643,41 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#ccc',
-    height:100,
+    height: 100,
     zIndex: 999,
   },
-  
+
   incidentDetails: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  
+
   incidentDetailsIcon: {
     width: 40,
     height: 40,
     marginRight: 10,
   },
-  
+
   incidentDetailsText: {
     flex: 1,
   },
-  
+
   incidentDetailsDistance: {
     fontSize: 16,
     fontWeight: 'bold',
-    color:'black'
+    color: 'black',
   },
-  
+
   incidentDetailsLocation: {
     fontSize: 14,
     color: '#555',
   },
-  
+
   incidentDetailsClose: {
     padding: 5,
-  },incidentDetailsTime: {
+  },
+  incidentDetailsTime: {
     fontSize: 10,
     color: '#777',
   },
-  
-  
-  
 });

@@ -7,7 +7,7 @@ import {
   Alert,
   Modal,
   Image,
-  
+  Linking 
 } from 'react-native';
 import React, {useEffect, useRef, useContext, useState} from 'react';
 import MapboxGL from '@rnmapbox/maps';
@@ -18,12 +18,9 @@ import {MapStyleContext} from './context/MapStyleContext';
 import {MAPBOX_API_TOKEN} from '@env';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import {IncidentContext} from './context/IncidentContext';
-import firestore from '@react-native-firebase/firestore';
-import BottomSheet from '@gorhom/bottom-sheet';
 import {getDistance} from 'geolib';
-import {format} from 'date-fns';
-
-
+import NetInfo from '@react-native-community/netinfo';
+import ConnectionStatusModal from './modals/ConnectionStatusModal';
 
 MapboxGL.setAccessToken(MAPBOX_API_TOKEN);
 
@@ -52,7 +49,12 @@ const MapScreen = ({destination}) => {
   const hazardIcon = require('../assets/hazard.png');
   const closureIcon = require('../assets/roadclose.png');
   const policeIcon = require('../assets/police.png');
-
+ 
+ 
+  const [isConnectionModalVisible, setIsConnectionModalVisible] = useState(false);
+  const toggleConnectionModal = () => {
+    setIsConnectionModalVisible(!isConnectionModalVisible);
+  };
   const handleMapError = error => {
     if (error.message.includes('Source mapboxUserLocation is not in style')) {
       console.warn('User location source not found in style, ignoring error.');
@@ -64,6 +66,7 @@ const MapScreen = ({destination}) => {
 
   const requestLocationPermission = async () => {
     try {
+      // Request location permission from the user
       const granted = await PermissionsAndroid.request(
         PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
         {
@@ -74,18 +77,74 @@ const MapScreen = ({destination}) => {
           buttonPositive: 'OK',
         },
       );
-
+  
+      // If permission is granted, check if location services (GPS) are enabled
       if (granted === PermissionsAndroid.RESULTS.GRANTED) {
-        getLocation();
+        checkLocationServices(); // Check if GPS is enabled and proceed
       } else {
         console.log('Location permission denied');
         setLocationError('Location permission denied');
       }
     } catch (err) {
       console.warn(err);
+      setLocationError('Error requesting location permission');
     }
   };
-
+  
+  const checkLocationServices = async () => {
+    // First, check internet connectivity
+    const netInfo = await NetInfo.fetch();
+  
+    if (!netInfo.isConnected) {
+      // Instead of showing an alert, display the connection status modal
+      setIsConnectionModalVisible(true);
+      return; // Stop execution here if there's no internet
+    }
+  
+    // If connected, proceed to get location
+    Geolocation.getCurrentPosition(
+      position => {
+        console.log('Location services are enabled');
+        getLocation(); // Proceed to get the location
+      },
+      error => {
+        if (error.code === 1) {
+          // Permission denied
+          console.log('Permission denied');
+          setLocationError('Permission denied');
+        } else if (error.code === 2) {
+          // Position unavailable (GPS turned off)
+          Alert.alert(
+            'Location Services Disabled',
+            'Please enable location services to report incidents.',
+            [
+              {
+                text: 'Go to Settings',
+                onPress: () => Linking.openSettings(), // Open device settings to enable GPS
+              },
+              { text: 'Cancel', style: 'cancel' },
+            ],
+          );
+        } else if (error.code === 3) {
+          // Timeout
+          console.error('Location request timed out');
+          Alert.alert(
+            'Location Timeout',
+            'Unable to retrieve your location within the allotted time. Please try again or check your GPS settings.',
+          );
+        } else {
+          console.error('Error checking location services:', error);
+        }
+      },
+      {
+        enableHighAccuracy: true, // Request high-accuracy GPS
+        timeout: 20000, // Increase timeout to 20 seconds (20000ms)
+        maximumAge: 1000, // Cache the location for 1 second
+        distanceFilter: 10, // Update location every 10 meters
+      },
+    );
+  };
+  
   const incidentTypes = [
     {id: 'bad_weather', label: 'Bad Weather', icon: badWeatherIcon},
     {id: 'traffic_jam', label: 'Traffic Jam', icon: trafficJamIcon},
@@ -431,7 +490,11 @@ const MapScreen = ({destination}) => {
         />
         <Text style={styles.incidentButtonText}>Report</Text>
       </TouchableOpacity>
-
+      <ConnectionStatusModal 
+        modalVisible={isConnectionModalVisible} 
+        toggleModal={toggleConnectionModal} 
+      />
+ 
       <Modal
         animationType="slide"
         transparent={true}

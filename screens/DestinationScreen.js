@@ -357,7 +357,7 @@ const DestinationScreen = () => {
   const calculateFuelConsumption = route => {
     if (route && gasConsumption) {
       const distanceInKm = route.distance / 1000;
-      const fuelUsed = (distanceInKm / gasConsumption).toFixed(2);
+      const fuelUsed = (distanceInKm / gasConsumption).toFixed(4);
       setEstimatedFuelConsumption(fuelUsed);
     }
   };
@@ -460,8 +460,7 @@ const DestinationScreen = () => {
 
     console.log(`Distance to origin: ${distanceToOrigin} meters`);
 
-    // If within 50 meters of the selected origin, start navigation
-    if (distanceToOrigin <= 50) {
+     if (distanceToOrigin <= 1000) {
       console.log('Navigating to NavigationScreen...');
       navigation.navigate('NavigationScreen', {
         origin: originForNavigation, // Use the current location or fallback origin
@@ -680,7 +679,7 @@ const DestinationScreen = () => {
                   const distanceInKm = (item.distance / 1000).toFixed(2); // Convert distance to km with 2 decimal places
                   const fuelConsumption = (
                     distanceInKm / gasConsumption
-                  ).toFixed(2); // Calculate gas consumption
+                  ).toFixed(4); // Calculate gas consumption
 
                   return (
                     <TouchableOpacity

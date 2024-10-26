@@ -7,7 +7,7 @@ import {
   Modal,
   Button,
   BackHandler,
-  FlatList,
+  Image,
   Animated,
   AppState,
   Share,
@@ -26,10 +26,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GasConsumptionContext } from './context/GasConsumptionProvider';
 import { debounce,throttle  } from 'lodash';
 import Summary from './Summary';
-import tw from 'tailwind-react-native-classnames';
-import SideBar from './SideBar';
+
 import InstructionsList from './component/InstructionList';
 import SQLite from 'react-native-sqlite-storage';
+import { IncidentContext } from './context/IncidentContext';
 
 
 
@@ -144,7 +144,7 @@ const NavigationScreen = ({ route, navigation  }) => {
   const [fuelUsed, setFuelUsed] = useState(0); // Initialize fuel used state
   const [isFinishRouteSheetVisible, setIsFinishRouteSheetVisible] = useState(false); // This controls the visibility of the "Finish Route" bottom sheet
 
-  const previousPosition = useRef(null); // Use ref to persist across renders
+  const previousPosition = useRef(null); 
   
   const [isSettingsModalVisible, setIsSettingsModalVisible] = useState(false);
   const [avoidTolls, setAvoidTolls] = useState(false);
@@ -155,12 +155,92 @@ const NavigationScreen = ({ route, navigation  }) => {
   const [traveledDistance, setTraveledDistance] = useState(0); // Traveled distance in meters
  const [fuelUsedForTraveledDistance, setFuelUsedForTraveledDistance] = useState(0); // Fuel used for the traversed route
  const [isUnfinishedRouteSheetVisible, setIsUnfinishedRouteSheetVisible] = useState(false);
- const [selectedOrigin, setSelectingOrigin] = useState(null); // Initialize with null or default value
- const [selectedDestination, setSelectedDestination] = useState(null); // Initialize selectedDestination
-
-
  
+ const { incidents, addIncident } = useContext(IncidentContext); // Access incidents and addIncident
+  const [incidentLocation, setIncidentLocation] = useState(null);
+  const [isModalVisible, setIsModalVisible] = useState(false);
+  const [selectedIncidentType, setSelectedIncidentType] = useState(null);
+
+  const badWeatherIcon = require('../assets/bad_weather.png');
+  const trafficJamIcon = require('../assets/traffic_jam.png');
+  const crashIcon = require('../assets/crash.png');
+  const hazardIcon = require('../assets/hazard.png');
+  const closureIcon = require('../assets/roadclose.png');
+  const policeIcon = require('../assets/police.png');
+
+  const incidentTypes = [
+    { id: 'bad_weather', label: 'Bad Weather', icon: badWeatherIcon },
+    { id: 'traffic_jam', label: 'Traffic Jam', icon: trafficJamIcon },
+    { id: 'crash', label: 'Crash', icon: crashIcon },
+    { id: 'hazard', label: 'Hazard', icon: hazardIcon },
+    { id: 'closure', label: 'Closure', icon: closureIcon },
+    { id: 'police', label: 'Police', icon: policeIcon },
+  ];
+  
   const proximityThreshold = 70;  
+ 
+  
+  useEffect(() => {
+    if (destination && mapRef.current) {
+      mapRef.current.setCamera({
+        centerCoordinate: [destination.longitude || origin.location.longitude, destination.latitude || origin.location.latitude],
+        zoomLevel: 14,
+        animationDuration: 0,
+      });
+    }
+  }, [destination, origin.location]);
+
+  const incidentsGeoJSON = {
+    type: 'FeatureCollection',
+    features: incidents
+      .filter(
+        incident =>
+          Array.isArray(incident.coordinates) &&
+          incident.coordinates.length === 2,
+      )
+      .map(incident => ({
+        type: 'Feature',
+        geometry: {
+          type: 'Point',
+          coordinates: incident.coordinates,
+        },
+        properties: {
+          id: incident.id,
+          type: incident.type,
+          icon: `${incident.type}-icon` || 'default-icon',
+        },
+      })),
+  };
+  const handleSubmitIncident = async () => {
+    if (!currentPosition || currentPosition.length !== 2) {
+      Alert.alert('Error', 'Unable to get your location. Please try again.');
+      return;
+    }
+  
+    if (!selectedIncidentType) {
+      Alert.alert('Error', 'Please select an incident type.');
+      return;
+    }
+  
+    const newIncident = {
+      id: Date.now().toString(), // Generate a unique id
+      type: selectedIncidentType,
+      coordinates: currentPosition,
+      timestamp: new Date().toISOString(),
+    };
+  
+    try {
+      await addIncident(newIncident);
+      Alert.alert('Success', 'Incident reported successfully!');
+      setIsModalVisible(false);
+      setSelectedIncidentType(null);
+    } catch (error) {
+      console.error('Error reporting incident:', error);
+      Alert.alert('Error', 'Failed to report incident.');
+    }
+  };
+  
+  
 
   const toggleMapStyle = () => {
     setIsLoadingMapStyle(true);
@@ -193,11 +273,19 @@ const NavigationScreen = ({ route, navigation  }) => {
     return null;  // No congestion
   };
   
-  const handleRoutePress = () => {
-    console.log('Route button pressed');
-    // Implement the logic for showing route details or options
-  };
+// Function to handle the "Route" button press and navigate to DestinationModal
+const handleRoutePress = () => {
+  console.log('Route button pressed');
   
+  // Navigate to the DestinationModal
+  navigation.navigate('DestinationScreen', {
+    origin,
+    destination,
+    stops,
+    destinationName,
+  });
+};
+
   const handleShareDrivePress = () => {
     console.log('Share Drive button pressed');
     // Implement the logic for sharing the drive, e.g., through a share sheet
@@ -890,13 +978,13 @@ useEffect(() => {
       // Calculate the fuel used for the traveled distance
       if (isFinite(traversedDistanceInMeters) && traversedDistanceInMeters > 0) {
         const fuelUsedForTraveledDistance = (traversedDistanceInMeters / 1000) / gasConsumption; // Convert to km and divide by consumption rate
-        setFuelUsedForTraveledDistance(parseFloat(fuelUsedForTraveledDistance.toFixed(2))); // Update fuel used state for the traveled distance
+        setFuelUsedForTraveledDistance(parseFloat(fuelUsedForTraveledDistance.toFixed(4))); // Update fuel used state for the traveled distance
       }
 
       // Calculate the fuel used for the remaining distance
       if (isFinite(remainingDistanceInMeters) && remainingDistanceInMeters > 0) {
         const fuelUsedForRemainingDistance = (remainingDistanceInMeters / 1000) / gasConsumption; // Convert to km and divide by consumption rate
-        setFuelUsed(parseFloat(fuelUsedForRemainingDistance.toFixed(2))); // Update fuel used state for the remaining distance
+        setFuelUsed(parseFloat(fuelUsedForRemainingDistance.toFixed(4))); // Update fuel used state for the remaining distance
       }
 
     } catch (error) {
@@ -1129,6 +1217,52 @@ const recenterMap = () => {
             maxZoomLevel={18}
             centerCoordinate={snappedPosition[0] !== 0 ? snappedPosition : currentPosition}
           />
+
+ <MapboxGL.Images
+    images={{
+      'bad_weather-icon': badWeatherIcon,
+      'traffic_jam-icon': trafficJamIcon,
+      'crash-icon': crashIcon,
+      'hazard-icon': hazardIcon,
+      'closure-icon': closureIcon,
+      'police-icon': policeIcon,
+    }}
+  />
+<MapboxGL.ShapeSource
+  id="incidentsSource"
+  shape={{
+    type: 'FeatureCollection',
+    features: incidents.map((incident) => ({
+      type: 'Feature',
+      geometry: {
+        type: 'Point',
+        coordinates: incident.coordinates,
+      },
+      properties: {
+        id: incident.id,
+        type: incident.type,
+        icon: `${incident.type}-icon`, // This should match the keys in MapboxGL.Images
+      },
+    })),
+  }}
+>
+  <MapboxGL.SymbolLayer
+   id="incidentsSymbols"
+   minZoomLevel={14}
+   maxZoomLevel={22}
+   style={{
+     iconImage: ['get', 'icon'],
+     iconSize: 0.1, // Reduced icon size
+     iconAllowOverlap: true,
+     iconIgnorePlacement: true,
+     iconAnchor: 'bottom',
+     iconPitchAlignment: 'map',
+     iconRotationAlignment: 'map',
+      
+    }}
+  />
+</MapboxGL.ShapeSource>
+
 
    {/* Non-Traversed Route (full opacity) */}
    {nonTraversedRoute.length > 0 && (
@@ -1397,7 +1531,13 @@ const recenterMap = () => {
         currentStepIndex={currentStepIndex}
       />
         </Animated.View>
-
+        <TouchableOpacity
+  style={styles.incidentButton}
+  onPress={() => setIsModalVisible(true)}
+>
+  <Ionicons name="warning-outline" size={24} color="white" style={styles.incidentButtonIcon} />
+  <Text style={styles.incidentButtonText}>Report</Text>
+</TouchableOpacity>
         <BottomSheet
   ref={bottomSheetRef}
   index={0}
@@ -1447,15 +1587,11 @@ const recenterMap = () => {
 
     {/* Footer Container with 3 buttons */}
     <View style={styles.footer}>
+      
       <TouchableOpacity style={styles.routeButton} onPress={handleRoutePress}>
-        <Text style={styles.buttonText}>Route</Text>
+        <Text style={styles.buttonText}>Change Route</Text>
       </TouchableOpacity>
-      <TouchableOpacity style={styles.shareDriveButton} onPress={handleShareDrivePress}>
-        <Text style={styles.buttonText}>Share Drive</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.overviewButton} onPress={handleOverviewPress}>
-        <Text style={styles.buttonText}>Overview</Text>
-      </TouchableOpacity>
+     
     </View>
   </View>
 </BottomSheet>
@@ -1483,9 +1619,54 @@ const recenterMap = () => {
             </View>
             <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Gas Consumed:</Text>
-                <Text style={styles.summaryValue}>{fuelUsed.toFixed(2)} L</Text>
+                <Text style={styles.summaryValue}>{fuelUsed.toFixed(4)} L</Text>
             </View>
         </View>
+        <Modal
+  animationType="slide"
+  transparent={true}
+  visible={isModalVisible}
+  onRequestClose={() => {
+    setIsModalVisible(false);
+    setSelectedIncidentType(null);
+  }}
+>
+  <View style={styles.modalContainer}>
+    <View style={styles.modalContent}>
+      <Text style={styles.modalTitle}>Select Incident Type</Text>
+      <View style={styles.incidentGrid}>
+        {incidentTypes.map(incident => (
+          <TouchableOpacity
+            key={incident.id}
+            style={[
+              styles.incidentItem,
+              selectedIncidentType === incident.id && styles.selectedIncidentItem,
+            ]}
+            onPress={() => setSelectedIncidentType(incident.id)}
+          >
+            <Image source={incident.icon} style={styles.incidentIcon} resizeMode="contain" />
+            {selectedIncidentType === incident.id && (
+              <Ionicons name="checkmark-circle" size={24} color="green" style={styles.checkmarkIcon} />
+            )}
+            <Text style={styles.incidentLabel}>{incident.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      <TouchableOpacity style={styles.submitButton} onPress={handleSubmitIncident}>
+        <Text style={styles.submitButtonText}>Report Incident</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={styles.cancelButton}
+        onPress={() => {
+          setIsModalVisible(false);
+          setSelectedIncidentType(null);
+        }}
+      >
+        <Text style={styles.cancelButtonText}>Cancel</Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+</Modal>
 
         {/* Share and Finish Buttons */}
         <View style={styles.buttonContainer}>
@@ -1590,6 +1771,7 @@ const recenterMap = () => {
 
     </View>
 </BottomSheet>
+
 {/* Unfinished Route BottomSheet */}
 <BottomSheet
   ref={bottomSheetRef}
@@ -1607,13 +1789,13 @@ const recenterMap = () => {
         Traveled Distance: {(traveledDistance / 1000).toFixed(2)} km
       </Text>
       <Text style={styles.tripDetailsText}>
-        Fuel Used (Traveled): {fuelUsedForTraveledDistance.toFixed(2)} L
+        Fuel Used (Traveled): {fuelUsedForTraveledDistance.toFixed(4)} L
       </Text>
       <Text style={styles.tripDetailsText}>
         Remaining Distance: {(remainingDistance / 1000).toFixed(2)} km
       </Text>
       <Text style={styles.tripDetailsText}>
-        Fuel Used (Remaining): {fuelUsed.toFixed(2)} L
+        Fuel Used (Remaining): {fuelUsed.toFixed(4)} L
       </Text>
     </View>
 
@@ -1650,7 +1832,8 @@ const recenterMap = () => {
           </View>
         </Modal>
 
-       
+  
+
       </GestureHandlerRootView>
     </View>
   );
@@ -2044,7 +2227,97 @@ buttonText: {
   color: 'white',
   fontSize: 16,
   fontWeight: 'bold',
+},incidentButton: {
+  position: 'absolute',
+  bottom: 200,
+  right: 10,
+  backgroundColor: '#ff6347',
+  borderRadius: 35,
+  paddingVertical: 10,
+  paddingHorizontal: 20,
+  alignItems: 'center',
+  justifyContent: 'center',
+ 
 },
+incidentButtonText: {
+  fontSize: 12,
+  fontWeight: 'bold',
+  color: 'white',
+},
+modalContainer: {
+  flex: 1,
+  justifyContent: 'center',
+  backgroundColor: 'rgba(0, 0, 0, 0.5)',
+},
+modalContent: {
+  backgroundColor: 'white',
+  marginHorizontal: 10,
+  borderRadius: 8,
+  padding: 16,
+  color:'black'
+},
+incidentGrid: {
+  flexDirection: 'row',
+  flexWrap: 'wrap',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+    color:'black'
+},
+incidentItem: {
+  width: '30%',
+  alignItems: 'center',
+  marginBottom: 16,
+  padding: 8,
+  borderRadius: 8,
+  backgroundColor: '#f0f0f0',
+  position: 'relative', // Required for absolute positioning
+},
+incidentIcon: {
+  width: 40,
+  height: 40,
+  marginBottom: 4,
+},
+selectedIncidentItem: {
+  borderColor: 'green',
+  borderWidth: 2, // Optional: To highlight the selected item
+},
+submitButton: {
+  marginTop: 16,
+  paddingVertical: 12,
+  borderRadius: 8,
+  backgroundColor: '#ff6347',
+  alignItems: 'center',
+},
+submitButtonText: {
+  color: 'white',
+  fontSize: 16,
+  fontWeight: 'bold',
+},
+cancelButton: {
+  marginTop: 8,
+  paddingVertical: 12,
+  borderRadius: 8,
+  backgroundColor: '#cccccc',
+  alignItems: 'center',
+},
+cancelButtonText: {
+  color: 'black',
+  fontSize: 16,
+  fontWeight: 'bold',
+},
+incidentLabel: {
+  color: 'black', // Default color for unselected items
+  fontSize: 13,
+  fontWeight: 'bold',
+},selectedIncidentLabel: {
+  color: 'green', // Change to desired color for the selected item
+},
+checkmarkIcon: {
+  position: 'absolute',
+  top: 5,
+  right: 5,
+},
+
 });
 
 

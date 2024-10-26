@@ -28,6 +28,7 @@ const SearchBar = ({ modalVisible, toggleModal }) => {
   const [originSearchResults, setOriginSearchResults] = useState([]); // Store search results for origin
   const [destinationSearchResults, setDestinationSearchResults] = useState([]); // Store search results for destination
   const { gasConsumption, setGasConsumption } = useContext(GasConsumptionContext); // Access the context
+  const [destinationMapModalVisible, setDestinationMapModalVisible] = useState(false); // For destination map modal
 
   const dispatch = useDispatch();
   const navigation = useNavigation(); // Initialize navigation
@@ -43,6 +44,31 @@ const SearchBar = ({ modalVisible, toggleModal }) => {
   }, [gasConsumption]);
 
 
+// Add this new function inside the SearchBar component
+const handleDestinationSelectFromMap = async (coordinates) => {
+  const [longitude, latitude] = coordinates;
+
+  try {
+    const reverseGeocode = await fetch(
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/${longitude},${latitude}.json?access_token=${MAPBOX_API_TOKEN}`
+    );
+    const data = await reverseGeocode.json();
+
+    if (data.features && data.features.length > 0) {
+      const placeName = data.features[0]?.place_name || 'Unknown Location';
+      const destinationLocation = { latitude, longitude, description: placeName };
+      setSelectedDestination(destinationLocation); // Store the destination locally
+      dispatch(setDestination(destinationLocation)); // Set destination in Redux
+      setDestinationSearchText(placeName); // Update the destination text
+      setDestinationMapModalVisible(false); // Close the modal
+    } else {
+      setDestinationSearchText('Unknown Location');
+    }
+  } catch (error) {
+    console.error('Error with reverse geocoding:', error);
+    setDestinationSearchText('Error retrieving location');
+  }
+};
   // Function to reset the search text and results
   const handlereset = () => {
     toggleModal();
@@ -192,125 +218,146 @@ useEffect(() => {
 
   return (
     <Modal
-    animationType="slide"
-    transparent={false}
-    visible={modalVisible}
-    onRequestClose={toggleModal}
-  >
-     <SafeAreaView style={styles.modalContainer}>
-  {/* Close Button */}
-  <TouchableOpacity style={styles.closeButton} onPress={handlereset}>
-    <Ionicons name="close" size={32} color="black" />
-  </TouchableOpacity>
-
- 
-    <GestureHandlerRootView style={{ flex: 1 }}>
+      animationType="slide"
+      transparent={false}
+      visible={modalVisible}
+      onRequestClose={toggleModal}
+    >
+      <SafeAreaView style={styles.modalContainer}>
+        {/* Close Button */}
+        <TouchableOpacity style={styles.closeButton} onPress={handlereset}>
+          <Ionicons name="close" size={32} color="black" />
+        </TouchableOpacity>
   
-    <View style={{ flex: 1 }}>
-  {/* Container for TextInputs */}
-  <View style={{ flexGrow: 0 }}>
-    {/* First TextInput (for Origin) with Icon */}
-    <View style={styles.inputContainer}>
-      <Ionicons
-        name="locate-outline"
-        size={24}
-        color="red"
-        style={styles.icon}
-        onPress={() => setMapModalVisible(true)}
-      />
-      <TextInput
-        style={styles.textInputWithIcon}
-        placeholder="Search or pin a location"
-        placeholderTextColor="gray"
-        value={originSearchText} // Display the selected or searched location
-        onChangeText={(text) => {
-          setOriginSearchText(text);
-          fetchPlaces(text, true); // Fetch places for origin
-        }}
-      />
-    </View>
-
-    {/* Second TextInput (for Destination) with Icon */}
-    <View style={styles.inputContainer}>
-      <Ionicons name="location-outline" size={24} color="black" style={styles.icon} />
-      <TextInput
-        style={styles.textInputWithIcon}
-        placeholder="Search a place for your destination"
-        placeholderTextColor="gray"
-        value={destinationSearchText}
-        onChangeText={(text) => {
-          setDestinationSearchText(text);
-          fetchPlaces(text, false); // Fetch places for destination
-        }}
-        editable={originSet} // Disable the input if origin is not set
-      />
-    </View>
-  </View>
-
-  {/* ScrollView for both origin and destination FlatLists */}
-  <ScrollView style={{ flexGrow: 1 }}>
-    {/* FlatList for origin search results */}
-    <FlatList
-      data={originSearchResults}
-      keyExtractor={(item) => item.id || item.place_name}
-      renderItem={({ item }) => (
-        <TouchableOpacity style={styles.resultItem} onPress={() => handleOriginSelect(item)}>
-          <View style={styles.itemContainer}>
-            <Ionicons name="location-outline" size={24} color="black" style={styles.icon} />
-            <View style={styles.textContainer}>
-              <Text style={styles.title}>{item.place_name}</Text>
-              <Text style={styles.subtitle}>{item.text || 'Unknown Region'}</Text>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <View style={{ flex: 1 }}>
+            {/* Container for TextInputs */}
+            <View style={{ flexGrow: 0 }}>
+              {/* Origin Input with Icon */}
+              <View style={styles.inputContainer}>
+                <Ionicons
+                  name="locate-outline"
+                  size={24}
+                  color="red"
+                  style={styles.icon}
+                  onPress={() => setMapModalVisible(true)}
+                />
+                <TextInput
+                  style={styles.textInputWithIcon}
+                  placeholder="Search or pin a location"
+                  placeholderTextColor="gray"
+                  value={originSearchText}
+                  onChangeText={(text) => {
+                    setOriginSearchText(text);
+                    fetchPlaces(text, true); // Fetch places for origin
+                  }}
+                />
+              </View>
+  
+              {/* Destination Input with Icon */}
+              <View style={styles.inputContainer}>
+                <Ionicons 
+                  name="location-outline" 
+                  size={24} 
+                  color={originSet ? "red" : "gray"}
+                  style={styles.icon}
+                  onPress={() => originSet && setDestinationMapModalVisible(true)}
+                />
+                <TextInput
+                  style={styles.textInputWithIcon}
+                  placeholder="Search a place for your destination"
+                  placeholderTextColor="gray"
+                  value={destinationSearchText}
+                  onChangeText={(text) => {
+                    setDestinationSearchText(text);
+                    fetchPlaces(text, false);
+                  }}
+                  editable={originSet}
+                />
+              </View>
             </View>
+  
+            {/* FlatList for displaying search results */}
+            <ScrollView style={{ flexGrow: 1 }}>
+              {/* FlatList for origin search results */}
+              <FlatList
+                data={originSearchResults}
+                keyExtractor={(item) => item.id || item.place_name}
+                renderItem={({ item }) => (
+                  <TouchableOpacity style={styles.resultItem} onPress={() => handleOriginSelect(item)}>
+                    <View style={styles.itemContainer}>
+                      <Ionicons name="location-outline" size={24} color="black" style={styles.icon} />
+                      <View style={styles.textContainer}>
+                        <Text style={styles.title}>{item.place_name}</Text>
+                        <Text style={styles.subtitle}>{item.text || 'Unknown Region'}</Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                )}
+                scrollEnabled={false}
+              />
+  
+              {/* FlatList for destination search results */}
+              <FlatList
+                data={destinationSearchResults}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => (
+                  <TouchableOpacity style={styles.resultItem} onPress={() => handleDestinationSelect(item)}>
+                    <View style={styles.itemContainer}>
+                      <Ionicons name="location-outline" size={24} color="black" style={styles.icon} />
+                      <View style={styles.textContainer}>
+                        <Text style={styles.title}>{item.place_name}</Text>
+                        <Text style={styles.subtitle}>{item.text || 'Unknown Region'}</Text>
+                      </View>
+                    </View>
+                  </TouchableOpacity>
+                )}
+                scrollEnabled={false}
+              />
+            </ScrollView>
+  
+            {/* "Check Route" Button - Only visible if both origin and destination are set */}
+            {selectedOrigin && selectedDestination && (
+              <TouchableOpacity
+                style={styles.checkRouteButton}
+                onPress={() => {
+                  navigation.navigate('DestinationScreen', { origin: selectedOrigin, destination: selectedDestination });
+                  toggleModal(); // Close the SearchBar modal
+                }}
+              >
+                <Text style={styles.checkRouteButtonText}>Check Route</Text>
+              </TouchableOpacity>
+            )}
           </View>
-        </TouchableOpacity>
-      )}
-      scrollEnabled={false} // Disable internal FlatList scrolling
-    />
-
-    {/* FlatList for destination search results */}
-    <FlatList
-      data={destinationSearchResults}
-      keyExtractor={(item) => item.id}
-      renderItem={({ item }) => (
-        <TouchableOpacity style={styles.resultItem} onPress={() => handleDestinationSelect(item)}>
-          <View style={styles.itemContainer}>
-            <Ionicons name="location-outline" size={24} color="black" style={styles.icon} />
-            <View style={styles.textContainer}>
-              <Text style={styles.title}>{item.place_name}</Text>
-              <Text style={styles.subtitle}>{item.text || 'Unknown Region'}</Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-      )}
-      scrollEnabled={false} // Disable internal FlatList scrolling
-    />
-  </ScrollView>
-</View>
-
-    </GestureHandlerRootView>
-
- 
-
-  {/* Map Selection Modal for selecting Origin */}
-  <MapSelectionModal
-    modalVisible={mapModalVisible}
-    toggleModal={() => setMapModalVisible(false)}
-    onSelectLocation={handleSelectLocation}
-  />
-
-{destinationModalVisible && (
-  <DestinationModal
-    visible={destinationModalVisible}
-    toggleModal={() => setDestinationModalVisible(false)}
-    origin={selectedOrigin}
-    destination={selectedDestination}
-   
-  />
-)}
-</SafeAreaView>
-
+        </GestureHandlerRootView>
+  
+        {/* Map Selection Modal for selecting Origin */}
+        <MapSelectionModal
+          modalVisible={mapModalVisible}
+          toggleModal={() => setMapModalVisible(false)}
+          onSelectLocation={handleSelectLocation}
+        />
+  
+        {/* Map Selection Modal for selecting Destination */}
+        <MapSelectionModal
+          modalVisible={destinationMapModalVisible}
+          toggleModal={() => setDestinationMapModalVisible(false)}
+          onSelectLocation={handleDestinationSelectFromMap}
+        />
+  
+        {/* Destination Modal if needed */}
+        {destinationModalVisible && (
+          <DestinationModal
+            visible={destinationModalVisible}
+            toggleModal={() => setDestinationModalVisible(false)}
+            origin={selectedOrigin}
+            destination={selectedDestination}
+          />
+        )}
+      </SafeAreaView>
     </Modal>
   );
+  
 };
 
 export default SearchBar;
@@ -364,5 +411,17 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 14,
     color: 'gray',
+  },checkRouteButton: {
+    marginTop: 20,
+    backgroundColor: '#ff6347', // Tomato color for visibility
+    paddingVertical: 15,
+    borderRadius: 10,
+    alignItems: 'center',
   },
+  checkRouteButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  
 });

@@ -1,21 +1,30 @@
-import React, {createContext, useState, useEffect} from 'react';
+import React, { createContext, useState, useEffect } from 'react';
 import firestore from '@react-native-firebase/firestore';
 
 export const IncidentContext = createContext();
 
-export const IncidentProvider = ({children}) => {
+export const IncidentProvider = ({ children }) => {
   const [incidents, setIncidents] = useState([]);
 
   useEffect(() => {
     const unsubscribe = firestore()
       .collection('incidents')
-      .onSnapshot(querySnapshot => {
-        const incidentsData = querySnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-        setIncidents(incidentsData);
-      });
+      .onSnapshot(
+        querySnapshot => {
+          if (querySnapshot) {
+            const incidentsData = querySnapshot.docs.map(doc => ({
+              id: doc.id,
+              ...doc.data(),
+            }));
+            setIncidents(incidentsData);
+          } else {
+            console.warn('QuerySnapshot is null');
+          }
+        },
+        error => {
+          console.error('Error fetching incidents: ', error);
+        }
+      );
 
     return () => unsubscribe();
   }, []);
@@ -29,7 +38,7 @@ export const IncidentProvider = ({children}) => {
   };
 
   return (
-    <IncidentContext.Provider value={{incidents, addIncident}}>
+    <IncidentContext.Provider value={{ incidents, addIncident }}>
       {children}
     </IncidentContext.Provider>
   );

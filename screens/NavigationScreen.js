@@ -157,7 +157,7 @@ const NavigationScreen = ({ route, navigation  }) => {
  const [isUnfinishedRouteSheetVisible, setIsUnfinishedRouteSheetVisible] = useState(false);
  
  const { incidents, addIncident } = useContext(IncidentContext); // Access incidents and addIncident
-  const [incidentLocation, setIncidentLocation] = useState(null);
+
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [selectedIncidentType, setSelectedIncidentType] = useState(null);
 
@@ -475,15 +475,7 @@ useEffect(() => {
 
 
 const handleFinishRoute = () => {
-  console.log('Final Data:');
-  console.log('Origin:', origin);
-  console.log('Destination:', destination);
-  console.log('Fuel Used:', fuelUsedForTraveledDistance);
-  console.log('ETA:', eta);
-  console.log('Duration:', totalDuration);
-  console.log('Distance:', totalDistance);
-
-  // Check if essential fields are valid
+  // Ensure that all required data is present before proceeding
   if (
     !origin ||
     !destination ||
@@ -499,7 +491,9 @@ const handleFinishRoute = () => {
     return;
   }
 
-  setIsFinishRouteSheetVisible(false); // Hide the sheet after finishing
+  // Show the finish route sheet and hide the unfinished route sheet
+  setIsFinishRouteSheetVisible(true);
+  setIsUnfinishedRouteSheetVisible(false);
 
   // Extract names from origin and destination
   const originName = origin.description || 'Current Location';
@@ -517,12 +511,13 @@ const handleFinishRoute = () => {
     destinationName
   );
 
-
-  // Reset navigation and return to SearchScreen
-  navigation.reset({
-    index: 0,
-    routes: [{ name: 'SearchScreen' }],
-  });
+  // Navigate back to SearchScreen after a short delay to ensure data is saved
+  setTimeout(() => {
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'SearchScreen' }],
+    });
+  }, 500); // Adjust the delay as needed
 };
 
 
@@ -1631,9 +1626,9 @@ const recenterMap = () => {
     setSelectedIncidentType(null);
   }}
 >
-  <View style={styles.modalContainer}>
-    <View style={styles.modalContent}>
-      <Text style={styles.modalTitle}>Select Incident Type</Text>
+<View style={styles.incidentModalOverlay}>
+    <View style={styles.incidentModalContainer}>
+      <Text style={styles.incidentModalTitle}>Select Incident Type</Text>
       <View style={styles.incidentGrid}>
         {incidentTypes.map(incident => (
           <TouchableOpacity
@@ -1646,26 +1641,27 @@ const recenterMap = () => {
           >
             <Image source={incident.icon} style={styles.incidentIcon} resizeMode="contain" />
             {selectedIncidentType === incident.id && (
-              <Ionicons name="checkmark-circle" size={24} color="green" style={styles.checkmarkIcon} />
+              <Ionicons name="checkmark-circle" size={24} color="green" style={styles.incidentCheckmarkIcon} />
             )}
             <Text style={styles.incidentLabel}>{incident.label}</Text>
           </TouchableOpacity>
         ))}
       </View>
-      <TouchableOpacity style={styles.submitButton} onPress={handleSubmitIncident}>
-        <Text style={styles.submitButtonText}>Report Incident</Text>
+      <TouchableOpacity style={styles.incidentSubmitButton} onPress={handleSubmitIncident}>
+        <Text style={styles.incidentSubmitButtonText}>Report Incident</Text>
       </TouchableOpacity>
       <TouchableOpacity
-        style={styles.cancelButton}
+        style={styles.incidentCancelButton}
         onPress={() => {
           setIsModalVisible(false);
           setSelectedIncidentType(null);
         }}
       >
-        <Text style={styles.cancelButtonText}>Cancel</Text>
+        <Text style={styles.incidentCancelButtonText}>Cancel</Text>
       </TouchableOpacity>
     </View>
   </View>
+  
 </Modal>
 
         {/* Share and Finish Buttons */}
@@ -1690,77 +1686,77 @@ const recenterMap = () => {
   visible={isSettingsModalVisible}
   onRequestClose={() => setIsSettingsModalVisible(false)}
 >
-  <View style={styles.modalContainer}>
-    <View style={styles.modalContent}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.modalTitle}>Settings</Text>
+<View style={styles.settingsModalOverlay}>
+    <View style={styles.settingsModalContainer}>
+      <ScrollView contentContainerStyle={styles.settingsScrollContent}>
+        <Text style={styles.settingsModalTitle}>Settings</Text>
 
         {/* Avoid Tolls Toggle */}
-        <TouchableOpacity style={styles.optionButton}>
-          <View style={styles.optionTextContainer}>
-            <Ionicons name="car-outline" size={24} color="#2196F3" style={styles.optionIcon} />
-            <Text style={styles.optionText}>Avoid Tolls</Text>
+        <TouchableOpacity style={styles.settingsOptionButton}>
+          <View style={styles.settingsOptionTextContainer}>
+            <Ionicons name="car-outline" size={24} color="#2196F3" style={styles.settingsOptionIcon} />
+            <Text style={styles.settingsOptionText}>Avoid Tolls</Text>
           </View>
           <Switch
             value={avoidTolls}
             onValueChange={handleAvoidTollsToggle}
             trackColor={{ false: '#ECECEC', true: '#81b0ff' }}
             thumbColor={avoidTolls ? '#2196F3' : '#f4f3f4'}
-            style={styles.switch} // Apply the switch style here
+            style={styles.settingsSwitch}
           />
         </TouchableOpacity>
 
         {/* Avoid Unpaved Roads Toggle */}
-        <TouchableOpacity style={styles.optionButton}>
-          <View style={styles.optionTextContainer}>
-            <Ionicons name="trail-sign-outline" size={24} color="#FF9800" style={styles.optionIcon} />
-            <Text style={styles.optionText}>Avoid Unpaved Roads</Text>
+        <TouchableOpacity style={styles.settingsOptionButton}>
+          <View style={styles.settingsOptionTextContainer}>
+            <Ionicons name="trail-sign-outline" size={24} color="#FF9800" style={styles.settingsOptionIcon} />
+            <Text style={styles.settingsOptionText}>Avoid Unpaved Roads</Text>
           </View>
           <Switch
             value={avoidUnpaved}
             onValueChange={handleAvoidUnpavedToggle}
             trackColor={{ false: '#ECECEC', true: '#81b0ff' }}
             thumbColor={avoidUnpaved ? '#FF9800' : '#f4f3f4'}
-            style={styles.switch}
+            style={styles.settingsSwitch}
           />
         </TouchableOpacity>
 
         {/* Avoid Ferries Toggle */}
-        <TouchableOpacity style={styles.optionButton}>
-          <View style={styles.optionTextContainer}>
-            <Ionicons name="boat-outline" size={24} color="#4CAF50" style={styles.optionIcon} />
-            <Text style={styles.optionText}>Avoid Ferries</Text>
+        <TouchableOpacity style={styles.settingsOptionButton}>
+          <View style={styles.settingsOptionTextContainer}>
+            <Ionicons name="boat-outline" size={24} color="#4CAF50" style={styles.settingsOptionIcon} />
+            <Text style={styles.settingsOptionText}>Avoid Ferries</Text>
           </View>
           <Switch
             value={avoidFerries}
             onValueChange={handleAvoidFerriesToggle}
             trackColor={{ false: '#ECECEC', true: '#81b0ff' }}
             thumbColor={avoidFerries ? '#4CAF50' : '#f4f3f4'}
-            style={styles.switch}
+            style={styles.settingsSwitch}
           />
         </TouchableOpacity>
 
         {/* Map Style Toggle */}
-        <TouchableOpacity style={styles.optionButton}>
-          <View style={styles.optionTextContainer}>
-            <Ionicons name="map-outline" size={24} color="#8E24AA" style={styles.optionIcon} />
-            <Text style={styles.optionText}>Satellite View</Text>
+        <TouchableOpacity style={styles.settingsOptionButton}>
+          <View style={styles.settingsOptionTextContainer}>
+            <Ionicons name="map-outline" size={24} color="#8E24AA" style={styles.settingsOptionIcon} />
+            <Text style={styles.settingsOptionText}>Satellite View</Text>
           </View>
           <Switch
             value={mapStyle === 'mapbox://styles/mapbox/satellite-streets-v12'}
             onValueChange={toggleMapStyle}
             trackColor={{ false: '#ECECEC', true: '#81b0ff' }}
             thumbColor={mapStyle === 'mapbox://styles/mapbox/satellite-streets-v12' ? '#8E24AA' : '#f4f3f4'}
-            style={styles.switch}
+            style={styles.settingsSwitch}
           />
         </TouchableOpacity>
 
         {/* Close Button */}
         <TouchableOpacity
-          style={styles.closeButton}
+          style={styles.settingsCloseButton}
           onPress={() => setIsSettingsModalVisible(false)}
         >
-          <Text style={styles.closeButtonText}>Close</Text>
+          <Text style={styles.settingsCloseButtonText}>Close</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>
@@ -1814,23 +1810,28 @@ const recenterMap = () => {
   </View>
 </BottomSheet>
 
-        {/* Exit Navigation Modal */}
-        <Modal
-          transparent={true}
-          visible={showExitModal}
-          animationType="slide"
-          onRequestClose={() => setShowExitModal(false)}
-        >
-          <View style={styles.modalContainer}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalText}>Do you want to exit navigation?</Text>
-              <View style={styles.modalButtons}>
-                <Button title="Yes" onPress={handleExitNavigation} />
-                <Button title="No" onPress={() => setShowExitModal(false)} />
-              </View>
-            </View>
-          </View>
-        </Modal>
+    {/* Exit Navigation Modal */}
+<Modal
+  transparent={true}
+  visible={showExitModal}
+  animationType="slide"
+  onRequestClose={() => setShowExitModal(false)}
+>
+<View style={styles.exitModalOverlay}>
+    <View style={styles.exitModalContainer}>
+      <Text style={styles.exitModalText}>Do you want to exit navigation?</Text>
+      <View style={styles.exitModalButtons}>
+        <TouchableOpacity style={styles.exitModalButtonYes} onPress={handleExitNavigation}>
+          <Text style={styles.exitModalButtonText}>Yes</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.exitModalButtonNo} onPress={() => setShowExitModal(false)}>
+          <Text style={styles.exitModalButtonText}>No</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  </View>
+  
+</Modal>
 
   
 
@@ -1908,23 +1909,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: 'gray',
   },
-    modalContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    },
-    modalContent: {
-      width: '90%',
-      backgroundColor: 'white',
-      borderRadius: 20,
-      padding: 20,
-      shadowColor: '#000',
-      shadowOpacity: 0.2,
-      shadowOffset: { width: 0, height: 3 },
-      shadowRadius: 5,
-      elevation: 10,
-    },
+ 
     scrollContent: {
       paddingVertical: 20,
     },
@@ -2316,7 +2301,256 @@ checkmarkIcon: {
   position: 'absolute',
   top: 5,
   right: 5,
+},  modalOverlay: {
+  flex: 1,
+  backgroundColor: 'rgba(0, 0, 0, 0.5)', // Dark semi-transparent background
+  justifyContent: 'center',
+  alignItems: 'center',
 },
+modalContainer: {
+  width: '80%',
+  backgroundColor: 'white',
+  borderRadius: 20,
+  padding: 20,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 5 },
+  shadowOpacity: 0.3,
+  shadowRadius: 10,
+  elevation: 10, // Android shadow
+},
+modalText: {
+  fontSize: 18,
+  color: '#333',
+  fontWeight: 'bold',
+  textAlign: 'center',
+  marginBottom: 20,
+},
+modalButtons: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+},
+modalButtonYes: {
+  backgroundColor: '#ff6347', // Waze-like orange
+  paddingVertical: 10,
+  paddingHorizontal: 20,
+  borderRadius: 15,
+  alignItems: 'center',
+  justifyContent: 'center',
+  flex: 1,
+  marginRight: 10,
+},
+modalButtonNo: {
+  backgroundColor: '#aaa', // Gray for "No" button
+  paddingVertical: 10,
+  paddingHorizontal: 20,
+  borderRadius: 15,
+  alignItems: 'center',
+  justifyContent: 'center',
+  flex: 1,
+  marginLeft: 10,
+},
+modalButtonText: {
+  color: 'white',
+  fontSize: 16,
+  fontWeight: 'bold',
+},// Incident Modal Styles
+incidentModalOverlay: {
+  flex: 1,
+  justifyContent: 'center',
+  alignItems: 'center',
+  backgroundColor: 'rgba(0, 0, 0, 0.5)',
+},
+incidentModalContainer: {
+  width: '85%',
+  paddingVertical: 20,
+  paddingHorizontal: 15,
+  backgroundColor: 'white',
+  borderRadius: 15,
+  alignItems: 'center',
+  shadowColor: '#000',
+  shadowOpacity: 0.3,
+  shadowOffset: { width: 0, height: 5 },
+  shadowRadius: 10,
+  elevation: 10,
+},
+incidentModalTitle: {
+  fontSize: 22,
+  fontWeight: 'bold',
+  textAlign: 'center',
+  color: '#2196F3',
+  marginBottom: 20,
+},
+incidentGrid: {
+  flexDirection: 'row',
+  flexWrap: 'wrap',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+},
+incidentItem: {
+  width: '30%',
+  alignItems: 'center',
+  marginBottom: 16,
+  padding: 8,
+  borderRadius: 8,
+  backgroundColor: '#f0f0f0',
+  position: 'relative',
+},
+incidentCheckmarkIcon: {
+  position: 'absolute',
+  top: 5,
+  right: 5,
+},
+incidentSubmitButton: {
+  marginTop: 16,
+  paddingVertical: 12,
+  borderRadius: 8,
+  backgroundColor: '#ff6347',
+  alignItems: 'center',
+},
+incidentSubmitButtonText: {
+  color: 'white',
+  fontSize: 16,
+  fontWeight: 'bold',
+},
+incidentCancelButton: {
+  marginTop: 8,
+  paddingVertical: 12,
+  borderRadius: 8,
+  backgroundColor: '#cccccc',
+  alignItems: 'center',
+},
+incidentCancelButtonText: {
+  color: 'black',
+  fontSize: 16,
+  fontWeight: 'bold',
+},
+
+// Exit Navigation Modal Styles
+exitModalOverlay: {
+  flex: 1,
+  backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  justifyContent: 'center',
+  alignItems: 'center',
+},
+exitModalContainer: {
+  width: '80%',
+  backgroundColor: 'white',
+  borderRadius: 20,
+  padding: 20,
+  shadowColor: '#000',
+  shadowOffset: { width: 0, height: 5 },
+  shadowOpacity: 0.3,
+  shadowRadius: 10,
+  elevation: 10,
+},
+exitModalText: {
+  fontSize: 18,
+  color: '#333',
+  fontWeight: 'bold',
+  textAlign: 'center',
+  marginBottom: 20,
+},
+exitModalButtons: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+},
+exitModalButtonYes: {
+  backgroundColor: '#ff6347',
+  paddingVertical: 10,
+  paddingHorizontal: 20,
+  borderRadius: 15,
+  alignItems: 'center',
+  justifyContent: 'center',
+  flex: 1,
+  marginRight: 10,
+},
+exitModalButtonNo: {
+  backgroundColor: '#aaa',
+  paddingVertical: 10,
+  paddingHorizontal: 20,
+  borderRadius: 15,
+  alignItems: 'center',
+  justifyContent: 'center',
+  flex: 1,
+  marginLeft: 10,
+},
+exitModalButtonText: {
+  color: 'white',
+  fontSize: 16,
+  fontWeight: 'bold',
+},
+
+// Settings Modal Styles
+settingsModalOverlay: {
+  flex: 1,
+  justifyContent: 'center',
+  alignItems: 'center',
+  backgroundColor: 'rgba(0,0,0,0.5)',
+},
+settingsModalContainer: {
+  width: '80%',
+  backgroundColor: 'white',
+  borderRadius: 10,
+  padding: 20,
+  elevation: 5,
+},
+settingsScrollContent: {
+  flexGrow: 1,
+  justifyContent: 'center',
+},
+settingsModalTitle: {
+  fontSize: 24,
+  fontWeight: 'bold',
+  marginBottom: 20,
+  textAlign: 'center',
+  color: 'black',
+},
+settingsOptionButton: {
+  flexDirection: 'row',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  backgroundColor: '#F5F5F5',
+  paddingVertical: 12,
+  paddingHorizontal: 10,
+  borderRadius: 15,
+  marginBottom: 15,
+  shadowColor: '#000',
+  shadowOpacity: 0.1,
+  shadowOffset: { width: 0, height: 2 },
+  shadowRadius: 2,
+  elevation: 5,
+},
+settingsOptionTextContainer: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  flex: 1,
+},
+settingsOptionText: {
+  fontSize: 18,
+  fontWeight: '500',
+  color: '#333',
+  marginLeft: 10,
+},
+settingsOptionIcon: {
+  marginRight: 10,
+},
+settingsSwitch: {
+  marginLeft: 'auto',
+},
+settingsCloseButton: {
+  backgroundColor: '#2196F3',
+  paddingVertical: 12,
+  paddingHorizontal: 20,
+  borderRadius: 25,
+  alignItems: 'center',
+  marginTop: 20,
+},
+settingsCloseButtonText: {
+  color: 'white',
+  fontSize: 16,
+  fontWeight: 'bold',
+},
+
 
 });
 

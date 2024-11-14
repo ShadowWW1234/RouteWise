@@ -190,15 +190,15 @@ const MapScreen = ({destination}) => {
     requestLocationPermission();
   }, [dispatch]);
 
-  useEffect(() => {
-    if (destination && mapRef.current) {
-      mapRef.current.setCamera({
-        centerCoordinate: [destination.longitude, destination.latitude],
-        zoomLevel: 14,
-        animationDuration: 0,
-      });
-    }
-  }, [destination]);
+  // useEffect(() => {
+  //   if (destination && mapRef.current) {
+  //     mapRef.current.setCamera({
+  //       centerCoordinate: [destination.longitude, destination.latitude],
+  //       zoomLevel: 14,
+  //       animationDuration: 0,
+  //     });
+  //   }
+  // }, [destination]);
 
   const handleLocationError = error => {
     switch (error.code) {
@@ -396,18 +396,22 @@ const MapScreen = ({destination}) => {
         onError={handleMapError}
         onCameraChanged={() => setIsRecentered(false)}
         onMapIdle={() => setIsRecentered(false)}>
-        <MapboxGL.Camera
-          ref={cameraRef}
-          zoomLevel={16}
-          centerCoordinate={
-            origin.location
-              ? [origin.location.longitude, origin.location.latitude]
-              : [120.89943929038361, 14.488862043596518]
-          }
-          pitch={0}
-          animationMode="flyTo"
-          followUserLocation={false}
-        />
+       
+       <MapboxGL.Camera
+  ref={cameraRef}
+  zoomLevel={16}
+  centerCoordinate={
+    destination
+      ? [destination.longitude, destination.latitude]
+      : origin.location
+        ? [origin.location.longitude, origin.location.latitude]
+        : [120.89943929038361, 14.488862043596518]
+  }
+  pitch={0}
+  animationMode="flyTo"
+  followUserLocation={false}
+/>
+
 
         {mapStyle && mapStyle.includes('mapbox://styles/mapbox') && (
           <MapboxGL.UserLocation

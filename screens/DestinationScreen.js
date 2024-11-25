@@ -21,6 +21,35 @@ import SideBar from './SideBar';
 
 MapboxGL.setAccessToken(MAPBOX_API_TOKEN);
 
+// Legend Component
+const Legend = () => {
+  return (
+    <View style={styles.legendContainer}>
+      <View style={styles.legendItem}>
+        <View style={[styles.colorBox, { backgroundColor: 'blue' }]} />
+        <Text style={styles.legendText}>Selected Route</Text>
+      </View>
+      <View style={styles.legendItem}>
+        <View style={[styles.colorBox, { backgroundColor: 'green' }]} />
+        <Text style={styles.legendText}>Alternative Route</Text>
+      </View>
+      <View style={styles.legendItem}>
+        <View style={[styles.colorBox, { backgroundColor: 'red' }]} />
+        <Text style={styles.legendText}>Severe Traffic</Text>
+      </View>
+      <View style={styles.legendItem}>
+        <View style={[styles.colorBox, { backgroundColor: 'orange' }]} />
+        <Text style={styles.legendText}>High Traffic</Text>
+      </View>
+      <View style={styles.legendItem}>
+        <View style={[styles.colorBox, { backgroundColor: 'yellow' }]} />
+        <Text style={styles.legendText}>Moderate Traffic</Text>
+      </View>
+    </View>
+  );
+};
+
+
 const DestinationScreen = () => {
   const route = useRoute();
   const navigation = useNavigation();
@@ -522,7 +551,7 @@ const DestinationScreen = () => {
               style={{
                 lineWidth: 6,
                 lineColor: 'green', // Unselected routes in green
-                lineOpacity: 1,
+                lineOpacity: 0.4,
                 lineCap: 'round',
                 lineJoin: 'round',
               }}
@@ -611,6 +640,7 @@ const DestinationScreen = () => {
   return (
     <GestureHandlerRootView style={{flex: 1}}>
       <View style={styles.container}>
+          <Legend />
         <MapboxGL.MapView
           ref={mapViewRef}
           style={styles.map}
@@ -670,7 +700,7 @@ const DestinationScreen = () => {
           <BottomSheet
             ref={bottomSheetRef}
             index={0}
-            snapPoints={['38%', '50%', '75%']}>
+            snapPoints={['38%','50%', '70%']}>
             <View style={styles.routesSheetContent}>
               <FlatList
                 data={routes}
@@ -883,5 +913,35 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: 'white',
     fontWeight: 'bold',
+  },  container: {
+    flex: 1,
+  },
+  map: {
+    flex: 1,
+  },
+  legendContainer: {
+    position: 'absolute',
+    top: 10, // Position from the top
+    right: 10, // Align to the right
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
+    padding: 10,
+    borderRadius: 8,
+    elevation: 5,
+    zIndex: 100, // Ensure it is above other components
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 5,
+  },
+  colorBox: {
+    width: 20,
+    height: 20,
+    marginRight: 10,
+    borderRadius: 3,
+  },
+  legendText: {
+    fontSize: 14,
+    color: '#333',
   },
 });

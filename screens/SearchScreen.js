@@ -120,79 +120,99 @@ const SearchScreen = () => {
 
     createTableAndLoadData();
   }, []);
-  const createTravelHistoryTable = () => {
+
+const createTravelHistoryTable = () => {
+  const dbs = getDBConnection();
+  dbs.transaction(txn => {
+    txn.executeSql(
+      `CREATE TABLE IF NOT EXISTS travel_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        origin_name TEXT,
+        origin_lat REAL,
+        origin_lon REAL,
+        destination_name TEXT,
+        destination_lat REAL,
+        destination_lon REAL,
+        distance REAL,
+        fuel_used REAL,
+        eta TEXT,
+        duration INTEGER,
+        saved_time INTEGER DEFAULT 0
+      );`,
+      [],
+      () => {
+        console.log('Travel history table created successfully.');
+      },
+      error => {
+        console.error('Error creating travel_history table:', error);
+      },
+    );
+  });
+};
+
+// const addSavedTimeColumn = () => {
+//   const dbs = getDBConnection();
+//   dbs.transaction(txn => {
+//     txn.executeSql(
+//       `ALTER TABLE travel_history ADD COLUMN saved_time INTEGER DEFAULT 0;`,
+//       [],
+//       () => {
+//         console.log('Column saved_time added to travel_history table successfully.');
+//       },
+//       error => {
+//         console.error('Error adding saved_time column:', error);
+//       },
+//     );
+//   });
+// };
+
+  useEffect(() => {
+    createTravelHistoryTable();  
+   // addSavedTimeColumn();
+  }, []);
+
+const loadTravelHistory = async () => {
+  try {
     const dbs = getDBConnection();
-    dbs.transaction(txn => {
-      txn.executeSql(
-        `CREATE TABLE IF NOT EXISTS travel_history (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          origin_name TEXT,
-          origin_lat REAL,
-          origin_lon REAL,
-          destination_name TEXT,
-          destination_lat REAL,
-          destination_lon REAL,
-          distance REAL,
-          fuel_used REAL,
-          eta TEXT,
-          duration INTEGER
-        );`,
+    await dbs.transaction(async txn => {
+      await txn.executeSql(
+        'SELECT * FROM travel_history',
         [],
-        () => {
-          console.log('Travel history table created successfully.');
+        (tx, results) => {
+          const travelHistoryData = [];
+          for (let i = 0; i < results.rows.length; i++) {
+            const row = results.rows.item(i);
+            travelHistoryData.push({
+              id: row.id,
+              origin: {
+                name: row.origin_name,
+                latitude: row.origin_lat,
+                longitude: row.origin_lon,
+              },
+              destination: {
+                name: row.destination_name,
+                latitude: row.destination_lat,
+                longitude: row.destination_lon,
+              },
+              distance: row.distance,
+              fuelUsed: row.fuel_used,
+              eta: row.eta,
+              duration: row.duration,
+              savedTime: row.saved_time, // Add saved_time to the history
+            });
+          }
+          setTravelHistory(travelHistoryData); // Update the state with loaded history
+          console.log('Loaded travel history:', travelHistoryData);
         },
         error => {
-          console.error('Error creating travel_history table:', error);
+          console.error('Error loading travel history:', error);
         },
       );
     });
-  };
-
-  useEffect(() => {
-    createTravelHistoryTable(); // Ensure table creation when the component mounts
-  }, []);
-
-  const loadTravelHistory = async () => {
-    try {
-      const dbs = getDBConnection();
-      await dbs.transaction(async txn => {
-        await txn.executeSql(
-          'SELECT * FROM travel_history',
-          [],
-          (tx, results) => {
-            const travelHistoryData = [];
-            for (let i = 0; i < results.rows.length; i++) {
-              const row = results.rows.item(i);
-              travelHistoryData.push({
-                id: row.id,
-                origin: {
-                  name: row.origin_name,
-                  latitude: row.origin_lat,
-                  longitude: row.origin_lon,
-                },
-                destination: {
-                  name: row.destination_name,
-                  latitude: row.destination_lat,
-                  longitude: row.destination_lon,
-                },
-                distance: row.distance,
-                fuelUsed: row.fuel_used,
-                eta: row.eta,
-                duration: row.duration,
-              });
-            }
-            setTravelHistory(travelHistoryData); // Update the state with loaded history
-            console.log('Loaded travel history:', travelHistoryData);
-          },
-          error => {
-            console.error('Error loading travel history:', error);
-          },
-        );
-      });
-    } catch (error) {
-      console.error('Error in travel history loading:', error);
-    }
-  };
+  } catch (error) {
+    console.error('Error in travel history loading:', error);
+  }
+};
 
   useEffect(() => {
     if (isFocused) {
@@ -318,35 +338,34 @@ const SearchScreen = () => {
             {/* Travel History List */}
             {travelHistory.length > 0 ? (
               <FlatList
-                data={travelHistory}
-                keyExtractor={item => item.id.toString()}
-                renderItem={({item}) => (
-                  <TouchableOpacity
-                    style={styles.historyItem}
-                    onPress={() => handleRewind(item)}>
-                    <View style={styles.historyIconContainer}>
-                      <Ionicons
-                        name="arrow-redo-circle-outline"
-                        size={24}
-                        color="black"
-                      />
-                    </View>
-                    <View style={styles.historyTextContainer}>
-                      <Text style={styles.historyDestination}>
-                        {item.destination.name}
-                      </Text>
-                      {/* Display coordinates below the destination */}
-                      <Text style={styles.historyCoordinates}>
-                        ({item.destination.latitude},{' '}
-                        {item.destination.longitude})
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                )}
-                contentContainerStyle={{paddingBottom: 20}}
-                style={{flexGrow: 1}}
-                showsVerticalScrollIndicator={false}
-              />
+              data={travelHistory}
+              keyExtractor={item => item.id.toString()}
+              renderItem={({item}) => (
+                <TouchableOpacity
+                  style={styles.historyItem}
+                  onPress={() => handleRewind(item)}>
+                  <View style={styles.historyIconContainer}>
+                    <Ionicons
+                      name="arrow-redo-circle-outline"
+                      size={24}
+                      color="black"
+                    />
+                  </View>
+                  <View style={styles.historyTextContainer}>
+                    <Text style={styles.historyDestination}>{item.destination.name}</Text>
+                    {/* Display coordinates below the destination */}
+                    <Text style={styles.historyCoordinates}>
+                      ({item.destination.latitude}, {item.destination.longitude})
+                    </Text>
+                  
+                  </View>
+                </TouchableOpacity>
+              )}
+              contentContainerStyle={{paddingBottom: 20}}
+              style={{flexGrow: 1}}
+              showsVerticalScrollIndicator={false}
+            />
+            
             ) : (
               <Text style={styles.noHistoryText}>
                 No travel history available.
@@ -525,5 +544,10 @@ const styles = StyleSheet.create({
   closeButtonText: {
     color: 'white',
     textAlign: 'center',
+  },savedTimeText: {
+    fontSize: 14,
+    color: 'green', // Use green to highlight saved time
+    marginTop: 5,
   },
+  
 });

@@ -7,7 +7,7 @@ const FinishedRouteModal = ({isVisible, onClose, routeDetails}) => {
     return null; // Return null if routeDetails is not available
   }
 
-  const {destination, fuelUsed, eta, duration, distance} = routeDetails;
+  const {destination, fuelUsed, eta, duration, distance, savedTime} = routeDetails;
 
   return (
     <Modal
@@ -47,7 +47,7 @@ const FinishedRouteModal = ({isVisible, onClose, routeDetails}) => {
             <Ionicons name="calendar-outline" size={24} color="#FF5722" />
             <Text style={styles.detailText}>
               <Text style={styles.label}>ETA: </Text>
-              {new Date(eta).toLocaleString()}
+              {formatDate(eta)}
             </Text>
           </View>
 
@@ -59,6 +59,17 @@ const FinishedRouteModal = ({isVisible, onClose, routeDetails}) => {
             </Text>
           </View>
 
+          {/* Display Saved Time */}
+          {savedTime > 0 && (
+            <View style={styles.detailItem}>
+              <Ionicons name="timer-outline" size={24} color="#4CAF50" />
+              <Text style={styles.detailText}>
+                <Text style={styles.label}>Saved Time: </Text>
+                {formatDuration(savedTime)}
+              </Text>
+            </View>
+          )}
+
           <TouchableOpacity style={styles.closeButton} onPress={onClose}>
             <Ionicons name="close" size={24} color="white" />
           </TouchableOpacity>
@@ -67,6 +78,19 @@ const FinishedRouteModal = ({isVisible, onClose, routeDetails}) => {
     </Modal>
   );
 };
+
+const formatDate = date => {
+  const options = {
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true, // Use 12-hour format
+  };
+  return new Intl.DateTimeFormat('en-US', options).format(new Date(date));
+};
+
 
 const formatDuration = durationInSeconds => {
   const hours = Math.floor(durationInSeconds / 3600);

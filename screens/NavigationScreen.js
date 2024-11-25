@@ -167,6 +167,7 @@ const NavigationScreen = ({ route, navigation  }) => {
   const hazardIcon = require('../assets/hazard.png');
   const closureIcon = require('../assets/roadclose.png');
   const policeIcon = require('../assets/police.png');
+  const [savedTime, setSavedTime] = useState(0); 
 
   const incidentTypes = [
     { id: 'bad_weather', label: 'Bad Weather', icon: badWeatherIcon },
@@ -315,47 +316,16 @@ const saveFinishedRoute = async (
   duration,
   distance,
   originName,
-  destinationName
+  destinationName,
+  savedTime = 0 
 ) => {
   try {
-    console.log('Saving Route:');
-    console.log('Origin:', origin);
-    console.log('Destination:', destination);
-    console.log('Fuel Used:', fuelUsed);
-    console.log('ETA:', eta);
-    console.log('Duration:', duration);
-    console.log('Distance:', distance);
-
-    // Ensure all required fields are provided
-    if (
-      !origin ||
-      origin.latitude === null ||
-      origin.latitude === undefined ||
-      origin.longitude === null ||
-      origin.longitude === undefined ||
-      !destination ||
-      destination.latitude === null ||
-      destination.latitude === undefined ||
-      destination.longitude === null ||
-      destination.longitude === undefined ||
-      fuelUsed === null ||
-      fuelUsed === undefined ||
-      !eta ||
-      duration === null ||
-      duration === undefined ||
-      distance === null ||
-      distance === undefined
-    ) {
-      console.error('Invalid data provided for saving finished route.');
-      return;
-    }
-
     const db = getDBConnection();
-    db.transaction((txn) => {
+    db.transaction(txn => {
       txn.executeSql(
         `INSERT INTO travel_history 
-          (origin_name, origin_lat, origin_lon, destination_name, destination_lat, destination_lon, distance, fuel_used, eta, duration) 
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
+          (origin_name, origin_lat, origin_lon, destination_name, destination_lat, destination_lon, distance, fuel_used, eta, duration, saved_time) 
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`,
         [
           originName || 'Origin',
           origin.latitude,
@@ -367,13 +337,10 @@ const saveFinishedRoute = async (
           fuelUsed,
           eta ? eta.toISOString() : '',
           duration,
+          savedTime, // Include saved time
         ],
-        () => {
-          console.log('Finished route saved successfully.');
-        },
-        (error) => {
-          console.error('Error saving finished route:', error);
-        }
+        () => console.log('Finished route saved successfully.'),
+        error => console.error('Error saving finished route:', error)
       );
     });
   } catch (error) {
@@ -475,7 +442,6 @@ useEffect(() => {
 
 
 const handleFinishRoute = () => {
-  // Ensure that all required data is present before proceeding
   if (
     !origin ||
     !destination ||
@@ -491,11 +457,13 @@ const handleFinishRoute = () => {
     return;
   }
 
-  // Show the finish route sheet and hide the unfinished route sheet
+  const arrivalTime = new Date(); // Current time as the actual arrival time
+  const calculatedSavedTime = eta ? Math.max(0, (eta.getTime() - arrivalTime.getTime()) / 1000) : 0; // Calculate saved time in seconds
+
+  setSavedTime(Math.round(calculatedSavedTime)); // Update savedTime in state
   setIsFinishRouteSheetVisible(true);
   setIsUnfinishedRouteSheetVisible(false);
 
-  // Extract names from origin and destination
   const originName = origin.description || 'Current Location';
   const destinationName = destination.description || 'Destination';
 
@@ -508,19 +476,17 @@ const handleFinishRoute = () => {
     totalDuration,
     traveledDistance,
     originName,
-    destinationName
+    destinationName,
+    Math.round(calculatedSavedTime) // Save time in seconds
   );
 
-  // Navigate back to SearchScreen after a short delay to ensure data is saved
   setTimeout(() => {
     navigation.reset({
       index: 0,
       routes: [{ name: 'SearchScreen' }],
     });
-  }, 500); // Adjust the delay as needed
+  }, 500);
 };
-
-
 
 
 const handleunFinishRoute = () => {
@@ -1593,179 +1559,51 @@ const recenterMap = () => {
 
 {/* Finish Route BottomSheet */}
 <BottomSheet
-    ref={bottomSheetRef}
-    index={isFinishRouteSheetVisible ? 1 : -1} // Show if user is near destination
-    snapPoints={snapPoints}
-    enablePanDownToClose={false}
-    handleIndicatorStyle={{ backgroundColor: 'gray' }}
+  ref={bottomSheetRef}
+  index={isFinishRouteSheetVisible ? 1 : -1}
+  snapPoints={snapPoints}
+  enablePanDownToClose={false}
+  handleIndicatorStyle={{ backgroundColor: 'gray' }}
 >
-    <View style={styles.finishRouteContainer}>
-        <Text style={styles.modalTitle}>You have reached your destination!</Text>
+  <View style={styles.finishRouteContainer}>
+    <Text style={styles.modalTitle}>You have reached your destination!</Text>
 
-        {/* Summary of the trip */}
-        <View style={styles.summaryContainer}>
-            <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Distance:</Text>
-                <Text style={styles.summaryValue}>{(remainingDistance / 1000).toFixed(2)} km</Text>
-            </View>
-            <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Arrival Time:</Text>
-                <Text style={styles.summaryValue}>{eta?.toLocaleTimeString()}</Text>
-            </View>
-            <View style={styles.summaryRow}>
-                <Text style={styles.summaryLabel}>Gas Consumed:</Text>
-                <Text style={styles.summaryValue}>{fuelUsed.toFixed(4)} L</Text>
-            </View>
-        </View>
-        <Modal
-  animationType="slide"
-  transparent={true}
-  visible={isModalVisible}
-  onRequestClose={() => {
-    setIsModalVisible(false);
-    setSelectedIncidentType(null);
-  }}
->
-<View style={styles.incidentModalOverlay}>
-    <View style={styles.incidentModalContainer}>
-      <Text style={styles.incidentModalTitle}>Select Incident Type</Text>
-      <View style={styles.incidentGrid}>
-        {incidentTypes.map(incident => (
-          <TouchableOpacity
-            key={incident.id}
-            style={[
-              styles.incidentItem,
-              selectedIncidentType === incident.id && styles.selectedIncidentItem,
-            ]}
-            onPress={() => setSelectedIncidentType(incident.id)}
-          >
-            <Image source={incident.icon} style={styles.incidentIcon} resizeMode="contain" />
-            {selectedIncidentType === incident.id && (
-              <Ionicons name="checkmark-circle" size={24} color="green" style={styles.incidentCheckmarkIcon} />
-            )}
-            <Text style={styles.incidentLabel}>{incident.label}</Text>
-          </TouchableOpacity>
-        ))}
+    <View style={styles.summaryContainer}>
+      <View style={styles.summaryRow}>
+        <Text style={styles.summaryLabel}>Distance:</Text>
+        <Text style={styles.summaryValue}>{(remainingDistance / 1000).toFixed(2)} km</Text>
       </View>
-      <TouchableOpacity style={styles.incidentSubmitButton} onPress={handleSubmitIncident}>
-        <Text style={styles.incidentSubmitButtonText}>Report Incident</Text>
+      <View style={styles.summaryRow}>
+        <Text style={styles.summaryLabel}>Arrival Time:</Text>
+        <Text style={styles.summaryValue}>{eta?.toLocaleTimeString()}</Text>
+      </View>
+      <View style={styles.summaryRow}>
+        <Text style={styles.summaryLabel}>Gas Consumed:</Text>
+        <Text style={styles.summaryValue}>{fuelUsed.toFixed(4)} L</Text>
+      </View>
+      <View style={styles.summaryRow}>
+        <Text style={styles.summaryLabel}>Saved Time:</Text>
+        <Text style={styles.summaryValue}>
+          {Math.floor(savedTime / 60)} mins {Math.round(savedTime % 60)} secs
+        </Text>
+      </View>
+    </View>
+
+    {/* Add buttons */}
+    <View style={styles.buttonContainer}>
+      {/* Share Button */}
+      <TouchableOpacity style={styles.shareButton} onPress={handleShare}>
+        <Ionicons name="share-outline" size={24} color="white" />
+        <Text style={styles.buttonText}>Share</Text>
       </TouchableOpacity>
-      <TouchableOpacity
-        style={styles.incidentCancelButton}
-        onPress={() => {
-          setIsModalVisible(false);
-          setSelectedIncidentType(null);
-        }}
-      >
-        <Text style={styles.incidentCancelButtonText}>Cancel</Text>
+
+      {/* Finish Button */}
+      <TouchableOpacity style={styles.finishButton} onPress={handleFinishRoute}>
+        <Ionicons name="checkmark-outline" size={24} color="white" />
+        <Text style={styles.buttonText}>Finish Route</Text>
       </TouchableOpacity>
     </View>
   </View>
-  
-</Modal>
-
-        {/* Share and Finish Buttons */}
-        <View style={styles.buttonContainer}>
-            <TouchableOpacity style={styles.shareButton} onPress={handleShare}>
-                <Ionicons name="share-outline" size={24} color="white" />
-                <Text style={styles.buttonText}>Share</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.finishButton} onPress={handleFinishRoute}>
-                <Ionicons name="checkmark-outline" size={24} color="white" />
-                <Text style={styles.buttonText}>Finish Route</Text>
-            </TouchableOpacity>
-        </View>
-
-
-
-         {/* Settings Modal */}
-         <Modal
-  animationType="slide"
-  transparent={true}
-  visible={isSettingsModalVisible}
-  onRequestClose={() => setIsSettingsModalVisible(false)}
->
-<View style={styles.settingsModalOverlay}>
-    <View style={styles.settingsModalContainer}>
-      <ScrollView contentContainerStyle={styles.settingsScrollContent}>
-        <Text style={styles.settingsModalTitle}>Settings</Text>
-
-        {/* Avoid Tolls Toggle */}
-        <TouchableOpacity style={styles.settingsOptionButton}>
-          <View style={styles.settingsOptionTextContainer}>
-            <Ionicons name="car-outline" size={24} color="#2196F3" style={styles.settingsOptionIcon} />
-            <Text style={styles.settingsOptionText}>Avoid Tolls</Text>
-          </View>
-          <Switch
-            value={avoidTolls}
-            onValueChange={handleAvoidTollsToggle}
-            trackColor={{ false: '#ECECEC', true: '#81b0ff' }}
-            thumbColor={avoidTolls ? '#2196F3' : '#f4f3f4'}
-            style={styles.settingsSwitch}
-          />
-        </TouchableOpacity>
-
-        {/* Avoid Unpaved Roads Toggle */}
-        <TouchableOpacity style={styles.settingsOptionButton}>
-          <View style={styles.settingsOptionTextContainer}>
-            <Ionicons name="trail-sign-outline" size={24} color="#FF9800" style={styles.settingsOptionIcon} />
-            <Text style={styles.settingsOptionText}>Avoid Unpaved Roads</Text>
-          </View>
-          <Switch
-            value={avoidUnpaved}
-            onValueChange={handleAvoidUnpavedToggle}
-            trackColor={{ false: '#ECECEC', true: '#81b0ff' }}
-            thumbColor={avoidUnpaved ? '#FF9800' : '#f4f3f4'}
-            style={styles.settingsSwitch}
-          />
-        </TouchableOpacity>
-
-        {/* Avoid Ferries Toggle */}
-        <TouchableOpacity style={styles.settingsOptionButton}>
-          <View style={styles.settingsOptionTextContainer}>
-            <Ionicons name="boat-outline" size={24} color="#4CAF50" style={styles.settingsOptionIcon} />
-            <Text style={styles.settingsOptionText}>Avoid Ferries</Text>
-          </View>
-          <Switch
-            value={avoidFerries}
-            onValueChange={handleAvoidFerriesToggle}
-            trackColor={{ false: '#ECECEC', true: '#81b0ff' }}
-            thumbColor={avoidFerries ? '#4CAF50' : '#f4f3f4'}
-            style={styles.settingsSwitch}
-          />
-        </TouchableOpacity>
-
-        {/* Map Style Toggle */}
-        <TouchableOpacity style={styles.settingsOptionButton}>
-          <View style={styles.settingsOptionTextContainer}>
-            <Ionicons name="map-outline" size={24} color="#8E24AA" style={styles.settingsOptionIcon} />
-            <Text style={styles.settingsOptionText}>Satellite View</Text>
-          </View>
-          <Switch
-            value={mapStyle === 'mapbox://styles/mapbox/satellite-streets-v12'}
-            onValueChange={toggleMapStyle}
-            trackColor={{ false: '#ECECEC', true: '#81b0ff' }}
-            thumbColor={mapStyle === 'mapbox://styles/mapbox/satellite-streets-v12' ? '#8E24AA' : '#f4f3f4'}
-            style={styles.settingsSwitch}
-          />
-        </TouchableOpacity>
-
-        {/* Close Button */}
-        <TouchableOpacity
-          style={styles.settingsCloseButton}
-          onPress={() => setIsSettingsModalVisible(false)}
-        >
-          <Text style={styles.settingsCloseButtonText}>Close</Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </View>
-  </View>
-</Modal>
-
-
-
-    </View>
 </BottomSheet>
 
 {/* Unfinished Route BottomSheet */}
